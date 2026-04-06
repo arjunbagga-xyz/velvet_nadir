@@ -1,0 +1,93 @@
+[project]
+name = "velvet-nadir"
+version = "0.1.0"
+description = "Personal AI assistant with distributed sensing and multi-LLM orchestration"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Velvet Nadir Team"}]
+
+dependencies = [
+    # Core
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "loguru>=0.7",
+    "asyncio>=3.4",
+    "aiohttp>=3.9",
+    "msgpack>=1.0",
+    
+    # Communication
+    "eclipse-zenoh>=0.11",
+    "asyncssh>=2.14",           # Async-native SSH (replaces paramiko)
+    "cryptography>=42.0",       # TLS cert generation for mesh security
+    
+    # Storage
+    "chromadb>=0.4",
+    "aiosqlite>=0.19",
+    
+    # Discovery
+    "bleak>=0.20",
+    "zeroconf>=0.131",
+    
+    # Audio (optional - install when models ready)
+    # "faster-whisper>=1.0",
+    # "openwakeword>=0.5",
+    # "silero-vad>=4.0",
+    # "piper-tts>=1.2",
+    
+    # Vision (optional)
+    # "ultralytics>=8.0",  # YOLOv8
+    
+    # LLM (optional - install when models ready)
+    # "llama-cpp-python>=0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "mypy>=1.0",
+    "ruff>=0.1",
+]
+audio = [
+    "faster-whisper>=1.0",
+    "openwakeword>=0.5",
+    "silero-vad>=4.0",
+    "piper-tts>=1.2",
+]
+vision = [
+    "ultralytics>=8.0",
+    "opencv-python>=4.8",
+]
+llm = [
+    "llama-cpp-python>=0.2",
+]
+vllm = [
+    "openai>=1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: marks tests that require external resources (audio, network)",
+    "slow: marks tests that are slow",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::RuntimeWarning",
+]

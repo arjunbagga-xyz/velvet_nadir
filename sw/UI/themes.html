@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velvet Nadir - UI</title>
+    <link rel="stylesheet" href="theme.css">
+</head>
+<body>
+    <header class="header">
+        <h1>VELVET NADIR</h1>
+    </header>
+
+    <div class="controls-panel">
+        <div class="control-section">
+            <div class="control-row">
+                <span class="label">Mode</span>
+                <button class="opt active" onclick="setMode('dark')">Dark</button>
+                <button class="opt" onclick="setMode('light')">Light</button>
+            </div>
+            <div class="control-row">
+                <span class="label">Container</span>
+                <button class="opt active" onclick="setContainer('rect')">Rectangle</button>
+                <button class="opt" onclick="setContainer('blank')">Blank</button>
+                <button class="opt" onclick="setContainer('glass')">Glass</button>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <div class="control-row">
+                <span class="label">Primary</span>
+                <input type="color" value="#00d4ff" class="color-input" onchange="setColor('primary',this.value)">
+                <button class="swatch" style="--c:#00d4ff" onclick="setColor('primary','#00d4ff')"></button>
+                <button class="swatch" style="--c:#00ff88" onclick="setColor('primary','#00ff88')"></button>
+                <button class="swatch" style="--c:#ffaa00" onclick="setColor('primary','#ffaa00')"></button>
+                <button class="swatch" style="--c:#ff4488" onclick="setColor('primary','#ff4488')"></button>
+                <button class="swatch" style="--c:#aa66ff" onclick="setColor('primary','#aa66ff')"></button>
+            </div>
+            <div class="control-row">
+                <span class="label">Accent</span>
+                <input type="color" value="#ff44aa" class="color-input" onchange="setColor('secondary',this.value)">
+                <button class="swatch s" style="--c:#ff44aa" onclick="setColor('secondary','#ff44aa')"></button>
+                <button class="swatch s" style="--c:#44ffaa" onclick="setColor('secondary','#44ffaa')"></button>
+                <button class="swatch s" style="--c:#ffcc44" onclick="setColor('secondary','#ffcc44')"></button>
+                <button class="swatch s" style="--c:#44aaff" onclick="setColor('secondary','#44aaff')"></button>
+                <button class="swatch s" style="--c:#ff6644" onclick="setColor('secondary','#ff6644')"></button>
+            </div>
+            <div class="control-row">
+                <span class="label">Neutral</span>
+                <input type="color" value="#444444" class="color-input" onchange="setColor('neutral',this.value)">
+                <button class="swatch n" style="--c:#444444" onclick="setColor('neutral','#444444')"></button>
+                <button class="swatch n" style="--c:#555555" onclick="setColor('neutral','#555555')"></button>
+                <button class="swatch n" style="--c:#666666" onclick="setColor('neutral','#666666')"></button>
+            </div>
+        </div>
+    </div>
+
+    <main class="container">
+        <div class="widget-grid">
+
+            <!-- Timeline -->
+            <div class="widget" data-name="Timeline">
+                <div class="timeline">
+                    <div class="tl-item past"><span class="tl-dot"></span><span class="tl-time">09:00</span><span class="tl-text">Standup</span></div>
+                    <div class="tl-item current" onclick="this.classList.toggle('expanded')"><span class="tl-dot"></span><span class="tl-time">10:30</span><span class="tl-text">Client Call</span><span class="tl-detail">Room 3A</span></div>
+                    <div class="tl-item"><span class="tl-dot"></span><span class="tl-time">12:00</span><span class="tl-text">Lunch</span></div>
+                    <div class="tl-item alert"><span class="tl-dot"></span><span class="tl-time">14:00</span><span class="tl-text">Review</span></div>
+                </div>
+            </div>
+
+            <!-- Chart -->
+            <div class="widget" data-name="Activity">
+                <div class="chart" onclick="randomizeChart(this)">
+                    <svg class="chart-ring" viewBox="0 0 100 100">
+                        <circle class="ring-bg" cx="50" cy="50" r="40"/>
+                        <circle class="ring-fill" cx="50" cy="50" r="40"/>
+                    </svg>
+                    <span class="chart-val">75%</span>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="widget" data-name="Actions">
+                <div class="action-btns">
+                    <button class="btn neutral">Cancel</button>
+                    <button class="btn primary">Confirm</button>
+                    <button class="btn secondary">Options</button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="widget" data-name="Stats">
+                <div class="stats-grid">
+                    <div class="stat" onclick="this.classList.toggle('highlight')"><span class="stat-val">72°</span><span class="stat-lbl">Temp</span></div>
+                    <div class="stat"><span class="stat-val">4</span><span class="stat-lbl">Events</span></div>
+                    <div class="stat"><span class="stat-val">85%</span><span class="stat-lbl">Power</span></div>
+                    <div class="stat alert"><span class="stat-val">3</span><span class="stat-lbl">Alerts</span></div>
+                </div>
+            </div>
+
+            <!-- Context -->
+            <div class="widget" data-name="Context">
+                <div class="context-widget">
+                    <div class="ctx-header"><span class="ctx-dot"></span><span>Work Mode</span></div>
+                    <div class="ctx-row" onclick="this.classList.toggle('active')"><span class="ctx-key">Location</span><span class="ctx-val">Office</span></div>
+                    <div class="ctx-row"><span class="ctx-key">Focus</span><span class="ctx-val">High</span></div>
+                    <div class="ctx-row"><span class="ctx-key">Next</span><span class="ctx-val">Lunch 42m</span></div>
+                </div>
+            </div>
+
+            <!-- Agents -->
+            <div class="widget" data-name="Agents">
+                <div class="agents-widget">
+                    <div class="agent active" onclick="this.classList.toggle('active')"><span class="agent-icon">◉</span><span class="agent-name">Context</span><span class="agent-status">●</span></div>
+                    <div class="agent active" onclick="this.classList.toggle('active')"><span class="agent-icon">◎</span><span class="agent-name">Memory</span><span class="agent-status">●</span></div>
+                    <div class="agent" onclick="this.classList.toggle('active')"><span class="agent-icon">◇</span><span class="agent-name">Scheduler</span><span class="agent-status">○</span></div>
+                    <div class="agent alert"><span class="agent-icon">⬡</span><span class="agent-name">Search</span><span class="agent-status">!</span></div>
+                </div>
+            </div>
+
+            <!-- Chat -->
+            <div class="widget" data-name="Chat">
+                <div class="chat-widget">
+                    <div class="chat-messages">
+                        <div class="msg ai">How can I help?</div>
+                        <div class="msg user">Schedule meeting 3pm</div>
+                        <div class="msg ai">Done. Meeting confirmed.</div>
+                    </div>
+                    <div class="chat-input">
+                        <input type="text" placeholder="Type a message..." onkeydown="if(event.key==='Enter')addMessage(this)">
+                        <button class="send-btn" onclick="addMessage(this.previousElementSibling)">▶</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress -->
+            <div class="widget" data-name="Progress">
+                <div class="progress-widget">
+                    <div class="progress-bar" onclick="setProgress(this,event)"><span class="progress-fill" style="--pct:65"></span></div>
+                    <div class="progress-steps">
+                        <span class="step done"></span>
+                        <span class="step done"></span>
+                        <span class="step current"></span>
+                        <span class="step"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notifications -->
+            <div class="widget" data-name="Notifications">
+                <div class="notif-widget">
+                    <div class="notif" onclick="this.classList.add('dismissed')"><span class="notif-icon">◈</span><span class="notif-text">Incoming call</span><span class="notif-close">×</span></div>
+                    <div class="notif alert"><span class="notif-icon">△</span><span class="notif-text">Low battery</span><span class="notif-close">×</span></div>
+                    <div class="notif"><span class="notif-icon">◇</span><span class="notif-text">Meeting soon</span><span class="notif-close">×</span></div>
+                </div>
+            </div>
+
+            <!-- Toggles -->
+            <div class="widget" data-name="Toggles">
+                <div class="toggle-widget">
+                    <div class="toggle-row"><span>Notifications</span><span class="toggle on" onclick="this.classList.toggle('on')"></span></div>
+                    <div class="toggle-row"><span>Dark Mode</span><span class="toggle on" onclick="this.classList.toggle('on')"></span></div>
+                    <div class="toggle-row"><span>Auto-sync</span><span class="toggle" onclick="this.classList.toggle('on')"></span></div>
+                </div>
+            </div>
+
+            <!-- Sliders -->
+            <div class="widget" data-name="Sliders">
+                <div class="slider-widget">
+                    <div class="slider-row"><span>Volume</span><input type="range" value="70"></div>
+                    <div class="slider-row"><span>Brightness</span><input type="range" value="50"></div>
+                </div>
+            </div>
+
+            <!-- File Browser -->
+            <div class="widget wide" data-name="Files">
+                <div class="file-browser">
+                    <div class="file-path">▣ /Documents/Projects</div>
+                    <div class="file-list">
+                        <div class="file-item folder" onclick="this.classList.toggle('selected')"><span class="file-icon">▢</span><span class="file-name">Assets</span><span class="file-meta">4 items</span></div>
+                        <div class="file-item folder"><span class="file-icon">▢</span><span class="file-name">Components</span><span class="file-meta">12 items</span></div>
+                        <div class="file-item" onclick="this.classList.toggle('selected')"><span class="file-icon">▤</span><span class="file-name">readme.md</span><span class="file-meta">2.4 KB</span></div>
+                        <div class="file-item"><span class="file-icon">▥</span><span class="file-name">preview.png</span><span class="file-meta">1.2 MB</span></div>
+                        <div class="file-item"><span class="file-icon">▤</span><span class="file-name">config.json</span><span class="file-meta">856 B</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Media -->
+            <div class="widget wide" data-name="Media">
+                <div class="media-widget">
+                    <div class="media-tabs">
+                        <button class="media-tab active" onclick="showMedia('image',this)">Image</button>
+                        <button class="media-tab" onclick="showMedia('video',this)">Video</button>
+                        <button class="media-tab" onclick="showMedia('file',this)">File</button>
+                    </div>
+                    <div class="media-content">
+                        <div class="media-pane active" id="media-image"><div class="media-placeholder"><span class="media-icon">▥</span><span class="media-name">photo.jpg</span></div></div>
+                        <div class="media-pane" id="media-video"><div class="media-placeholder"><span class="media-icon">▷</span><span class="media-name">clip.mp4</span></div></div>
+                        <div class="media-pane" id="media-file"><div class="media-placeholder"><span class="media-icon">▤</span><span class="media-name">doc.pdf</span></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="widget wide" data-name="Data">
+                <table>
+                    <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Value</th></tr></thead>
+                    <tbody>
+                        <tr onclick="this.classList.toggle('selected')"><td>sensor_01</td><td>temp</td><td><span class="dot active"></span>Active</td><td>24.5°C</td></tr>
+                        <tr onclick="this.classList.toggle('selected')"><td>sensor_02</td><td>humidity</td><td><span class="dot active"></span>Active</td><td>68%</td></tr>
+                        <tr><td>sensor_03</td><td>motion</td><td><span class="dot"></span>Idle</td><td>0</td></tr>
+                        <tr class="alert"><td>sensor_04</td><td>pressure</td><td><span class="dot alert"></span>Error</td><td>--</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Map -->
+            <div class="widget wide" data-name="Navigation">
+                <div class="map-widget">
+                    <svg class="map-svg" viewBox="0 0 300 100">
+                        <line class="street" x1="0" y1="25" x2="300" y2="25"/>
+                        <line class="street" x1="0" y1="50" x2="300" y2="50"/>
+                        <line class="street" x1="0" y1="75" x2="300" y2="75"/>
+                        <line class="street" x1="50" y1="0" x2="50" y2="100"/>
+                        <line class="street" x1="120" y1="0" x2="120" y2="100"/>
+                        <line class="street" x1="190" y1="0" x2="190" y2="100"/>
+                        <line class="street" x1="260" y1="0" x2="260" y2="100"/>
+                        <rect class="building" x="55" y="28" width="60" height="18"/>
+                        <rect class="building" x="125" y="53" width="60" height="18"/>
+                        <path class="route" d="M30,75 L50,75 L50,50 L120,50 L120,25 L190,25 L190,50 L260,50"/>
+                        <circle class="marker you" cx="30" cy="75" r="4"/>
+                        <circle class="marker dest" cx="260" cy="50" r="4"/>
+                    </svg>
+                    <div class="map-info"><span>▶ Office</span><span>12 min</span></div>
+                </div>
+            </div>
+
+            <!-- 3D Cards -->
+            <div class="widget wide" data-name="Cards 3D">
+                <div class="cards-3d">
+                    <div class="card-3d" onclick="this.classList.toggle('flipped')"><span class="card-t">Weather</span><span class="card-v">72°F</span></div>
+                    <div class="card-3d" onclick="this.classList.toggle('flipped')"><span class="card-t">Events</span><span class="card-v">4</span></div>
+                    <div class="card-3d" onclick="this.classList.toggle('flipped')"><span class="card-t">Messages</span><span class="card-v">3</span></div>
+                </div>
+            </div>
+
+            <!-- 3D Agent Orbs -->
+            <div class="widget wide" data-name="Network 3D">
+                <div class="orbs-3d">
+                    <div class="orb active" style="--x:10%;--y:20%" onclick="this.classList.toggle('active')">◉</div>
+                    <div class="orb active" style="--x:35%;--y:55%">◎</div>
+                    <div class="orb" style="--x:60%;--y:15%">◇</div>
+                    <div class="orb alert" style="--x:85%;--y:50%">⬡</div>
+                    <svg class="lines"><line x1="13%" y1="28%" x2="37%" y2="52%"/><line x1="37%" y1="50%" x2="62%" y2="22%"/><line x1="62%" y1="22%" x2="87%" y2="48%"/></svg>
+                </div>
+            </div>
+
+            <!-- 3D Object -->
+            <div class="widget" data-name="Object 3D">
+                <div class="object-3d" onclick="this.classList.toggle('paused')">
+                    <div class="cube"><div class="face"></div><div class="face"></div><div class="face"></div><div class="face"></div></div>
+                </div>
+            </div>
+
+            <!-- 3D Ring -->
+            <div class="widget" data-name="Ring 3D">
+                <div class="ring-3d">
+                    <div class="orbit o1"></div>
+                    <div class="orbit o2"></div>
+                    <span class="ring-v">85%</span>
+                </div>
+            </div>
+
+            <!-- 3D Stream -->
+            <div class="widget" data-name="Stream 3D">
+                <div class="stream-3d"><div class="line"><span></span></div><div class="line"><span></span></div><div class="line"><span></span></div><div class="line"><span></span></div><div class="line"><span></span></div></div>
+            </div>
+
+            <!-- Holo -->
+            <div class="widget" data-name="Holo">
+                <div class="holo-3d" onclick="cycleHolo(this)"><span class="holo-text">READY</span></div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        function setMode(mode) {
+            document.body.classList.toggle('light', mode === 'light');
+            document.querySelectorAll('.control-row:first-child .opt').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function setContainer(type) {
+            document.body.classList.remove('container-rect', 'container-blank', 'container-glass');
+            document.body.classList.add('container-' + type);
+            document.querySelectorAll('.control-row:nth-child(2) .opt').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function setColor(name, value) {
+            document.documentElement.style.setProperty('--' + name, value);
+        }
+
+        function showMedia(type, btn) {
+            document.querySelectorAll('.media-tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.media-pane').forEach(p => p.classList.remove('active'));
+            document.getElementById('media-' + type).classList.add('active');
+        }
+
+        function addMessage(input) {
+            if (!input.value.trim()) return;
+            const container = input.closest('.chat-widget').querySelector('.chat-messages');
+            const msg = document.createElement('div');
+            msg.className = 'msg user';
+            msg.textContent = input.value;
+            container.appendChild(msg);
+            input.value = '';
+            setTimeout(() => {
+                const reply = document.createElement('div');
+                reply.className = 'msg ai';
+                reply.textContent = 'Got it!';
+                container.appendChild(reply);
+                container.scrollTop = container.scrollHeight;
+            }, 500);
+        }
+
+        function randomizeChart(el) {
+            const val = Math.floor(Math.random() * 100);
+            el.querySelector('.chart-val').textContent = val + '%';
+            el.querySelector('.ring-fill').style.setProperty('--pct', val);
+        }
+
+        function setProgress(bar, e) {
+            const rect = bar.getBoundingClientRect();
+            const pct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+            bar.querySelector('.progress-fill').style.setProperty('--pct', pct);
+        }
+
+        function cycleHolo(el) {
+            const states = ['READY', 'ACTIVE', 'STANDBY', 'OFFLINE'];
+            const txt = el.querySelector('.holo-text');
+            let i = states.indexOf(txt.textContent);
+            txt.textContent = states[(i + 1) % states.length];
+        }
+
+        // Init
+        document.body.classList.add('container-rect');
+    </script>
+</body>
+</html>

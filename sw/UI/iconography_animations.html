@@ -1,0 +1,2218 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velvet Ephemeral AI - Iteration 1</title>
+    <style>
+        :root {
+            /* Dark Theme Defaults */
+            --bg-color: #020203;
+            --text-main: #E2E8F0;
+            --text-sub: #4A5B7A;
+            --accent-purple: #8B5CF6;
+            --accent-blue: #3B82F6;
+            --accent-cyan: #06B6D4;
+            --divider: linear-gradient(90deg, transparent, #2D3748, transparent);
+            --dot-bg: #4A5B7A;
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-border: #2D3748;
+        }
+
+        [data-theme="light"] {
+            /* Light Theme Overrides */
+            --bg-color: #F8FAFC;
+            --text-main: #1A202C;
+            --text-sub: #718096;
+            --divider: linear-gradient(90deg, transparent, #CBD5E0, transparent);
+            --dot-bg: #A0AEC0;
+            --btn-bg: rgba(0, 0, 0, 0.05);
+            --btn-border: #CBD5E0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            overflow-x: hidden;
+            user-select: none;
+            transition: background-color 0.5s ease, color 0.5s ease;
+        }
+
+        /* Controls */
+        .controls-overlay {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .theme-btn {
+            background: var(--btn-bg);
+            color: var(--text-main);
+            border: 1px solid var(--btn-border);
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: all 0.2s;
+            backdrop-filter: blur(5px);
+        }
+
+        .theme-btn:hover {
+            background: var(--text-main);
+            color: var(--bg-color);
+        }
+
+        .pause-status {
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            color: var(--text-sub);
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            padding: 60px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .main-logo-wrapper {
+            position: relative;
+            width: 400px;
+            height: 350px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .title-container {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .main-title {
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 0.8em;
+            margin-left: 0.8em;
+            color: var(--text-main);
+            margin-bottom: 15px;
+            transition: color 0.5s;
+        }
+
+        .sub-title {
+            font-size: 11px;
+            font-weight: 400;
+            letter-spacing: 0.4em;
+            margin-left: 0.4em;
+            color: var(--text-sub);
+            transition: color 0.5s;
+        }
+
+        .animations-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 60px;
+            gap: 50px;
+        }
+
+        .section-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 30px;
+        }
+
+        .section-header::before,
+        .section-header::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--divider);
+            transition: background 0.5s;
+        }
+
+        .section-title {
+            font-size: 10px;
+            letter-spacing: 0.2em;
+            color: var(--text-sub);
+            margin: 0 15px;
+            white-space: nowrap;
+            transition: color 0.5s;
+        }
+
+        .icons-row {
+            display: flex;
+            justify-content: space-evenly;
+            width: 100%;
+            padding: 0 10px;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .anim-state-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 90px;
+        }
+
+        .anim-canvas-wrapper {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 15px;
+        }
+
+        .anim-label {
+            font-size: 9px;
+            letter-spacing: 0.2em;
+            color: var(--text-sub);
+            margin-bottom: 8px;
+            transition: color 0.5s;
+        }
+
+        .anim-indicator {
+            display: flex;
+            gap: 4px;
+            height: 6px;
+            align-items: center;
+        }
+
+        .dot {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background-color: var(--dot-bg);
+            transition: background-color 0.5s;
+        }
+
+        .dot.active {
+            background-color: var(--accent-cyan);
+            box-shadow: 0 0 5px var(--accent-cyan);
+        }
+
+        .dot.purple {
+            background-color: var(--accent-purple);
+            box-shadow: 0 0 8px var(--accent-purple);
+            width: 6px;
+            height: 6px;
+        }
+
+        .bottom-section {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .palette-header {
+            font-size: 10px;
+            letter-spacing: 0.2em;
+            color: var(--text-sub);
+            margin-bottom: 15px;
+            margin-left: 60px;
+            transition: color 0.5s;
+        }
+
+        .color-palette-container {
+            display: flex;
+            gap: 15px;
+            margin-left: 60px;
+            margin-bottom: 40px;
+        }
+
+        .color-picker-wrapper {
+            position: relative;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid var(--btn-border);
+            cursor: pointer;
+            transition: border-color 0.2s, transform 0.2s;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .color-picker-wrapper:hover {
+            border-color: var(--text-main);
+            transform: scale(1.1);
+        }
+
+        .color-picker-wrapper input[type="color"] {
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            border: none;
+            padding: 0;
+            background: none;
+        }
+
+        .iterations-list {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            margin-top: 20px;
+        }
+
+        .iteration-item {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .iteration-title {
+            font-size: 10px;
+            letter-spacing: 0.3em;
+            color: var(--text-sub);
+            margin-bottom: 10px;
+            margin-left: 60px;
+            transition: color 0.5s;
+        }
+
+        .ribbon-container {
+            width: 100%;
+            height: 200px;
+            position: relative;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="controls-overlay">
+        <button id="themeToggle" class="theme-btn">TOGGLE LIGHT/DARK</button>
+        <div class="pause-status" id="pauseStatus">Click screen to PAUSE/PLAY</div>
+    </div>
+
+    <div class="container">
+        <div class="main-logo-wrapper"><canvas id="canvas-main"></canvas></div>
+        <div class="title-container">
+            <div class="main-title">V E L V E T</div>
+            <div class="sub-title">- E P M E M E R A L A I -</div>
+        </div>
+
+        <div class="animations-container">
+            <!-- 1. AI States -->
+            <div class="section-block">
+                <div class="section-header"><span class="section-title">AI AGENT STATES</span></div>
+                <div class="icons-row">
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-anim-idle"></canvas></div>
+                        <div class="anim-label">IDLE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-anim-busy"></canvas></div>
+                        <div class="anim-label">BUSY</div>
+                        <div class="anim-indicator">
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-anim-pulse"></canvas></div>
+                        <div class="anim-label">PULSE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple" style="opacity: 0.5; width: 10px; height: 10px; filter: blur(2px);">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-anim-heartbeat"></canvas></div>
+                        <div class="anim-label">HEART</div>
+                        <div class="anim-indicator">
+                            <div class="dot active" style="background-color: #E879F9; box-shadow: 0 0 5px #E879F9;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-anim-offline"></canvas></div>
+                        <div class="anim-label">OFFLINE</div>
+                        <div class="anim-indicator">
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. HUMAN USER STATES (Clean UI Profile) -->
+            <div class="section-block">
+                <div class="section-header"><span class="section-title">HUMAN USER (CLEAN PROFILE)</span></div>
+                <div class="icons-row">
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-human-idle"></canvas></div>
+                        <div class="anim-label">IDLE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-human-busy"></canvas></div>
+                        <div class="anim-label">BUSY</div>
+                        <div class="anim-indicator">
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-human-pulse"></canvas></div>
+                        <div class="anim-label">PULSE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple" style="opacity: 0.5; width: 10px; height: 10px; filter: blur(2px);">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-human-heartbeat"></canvas></div>
+                        <div class="anim-label">HEART</div>
+                        <div class="anim-indicator">
+                            <div class="dot active" style="background-color: #E879F9; box-shadow: 0 0 5px #E879F9;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-human-offline"></canvas></div>
+                        <div class="anim-label">OFFLINE</div>
+                        <div class="anim-indicator">
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. ROBOT: INTERLOCKING GEARS -->
+            <div class="section-block">
+                <div class="section-header"><span class="section-title">ROBOT AGENT (INTERLOCKING GEARS)</span></div>
+                <div class="icons-row">
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-gear-idle"></canvas></div>
+                        <div class="anim-label">IDLE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-gear-busy"></canvas></div>
+                        <div class="anim-label">BUSY</div>
+                        <div class="anim-indicator">
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-gear-pulse"></canvas></div>
+                        <div class="anim-label">PULSE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple" style="opacity: 0.5; width: 10px; height: 10px; filter: blur(2px);">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-gear-heartbeat"></canvas></div>
+                        <div class="anim-label">HEART</div>
+                        <div class="anim-indicator">
+                            <div class="dot active" style="background-color: #E879F9; box-shadow: 0 0 5px #E879F9;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-gear-offline"></canvas></div>
+                        <div class="anim-label">OFFLINE</div>
+                        <div class="anim-indicator">
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. ASTROLABE (Navigation) -->
+            <div class="section-block">
+                <div class="section-header"><span class="section-title">ASTROLABE (NAVIGATION / SYSTEM)</span></div>
+                <div class="icons-row">
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-astro-idle"></canvas></div>
+                        <div class="anim-label">IDLE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-astro-busy"></canvas></div>
+                        <div class="anim-label">BUSY</div>
+                        <div class="anim-indicator">
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-astro-pulse"></canvas></div>
+                        <div class="anim-label">PULSE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple" style="opacity: 0.5; width: 10px; height: 10px; filter: blur(2px);">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-astro-heartbeat"></canvas></div>
+                        <div class="anim-label">HEART</div>
+                        <div class="anim-indicator">
+                            <div class="dot active" style="background-color: #E879F9; box-shadow: 0 0 5px #E879F9;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-astro-offline"></canvas></div>
+                        <div class="anim-label">OFFLINE</div>
+                        <div class="anim-indicator">
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. COMPUTERS -->
+            <div class="section-block">
+                <div class="section-header"><span class="section-title">HARDWARE: COMPUTE (PROCESSING UNIT)</span></div>
+                <div class="icons-row">
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-comp-idle"></canvas></div>
+                        <div class="anim-label">IDLE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-comp-busy"></canvas></div>
+                        <div class="anim-label">BUSY</div>
+                        <div class="anim-indicator">
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-comp-pulse"></canvas></div>
+                        <div class="anim-label">PULSE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple" style="opacity: 0.5; width: 10px; height: 10px; filter: blur(2px);">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-comp-heartbeat"></canvas></div>
+                        <div class="anim-label">HEART</div>
+                        <div class="anim-indicator">
+                            <div class="dot active" style="background-color: #E879F9; box-shadow: 0 0 5px #E879F9;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-comp-offline"></canvas></div>
+                        <div class="anim-label">OFFLINE</div>
+                        <div class="anim-indicator">
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6. SENSORS (Radar) -->
+            <div class="section-block">
+                <div class="section-header"><span class="section-title">HARDWARE: SENSORS (RADAR SWEEP)</span></div>
+                <div class="icons-row">
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sens-idle"></canvas></div>
+                        <div class="anim-label">IDLE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sens-busy"></canvas></div>
+                        <div class="anim-label">BUSY</div>
+                        <div class="anim-indicator">
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sens-pulse"></canvas></div>
+                        <div class="anim-label">PULSE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple" style="opacity: 0.5; width: 10px; height: 10px; filter: blur(2px);">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sens-heartbeat"></canvas></div>
+                        <div class="anim-label">HEART</div>
+                        <div class="anim-indicator">
+                            <div class="dot active" style="background-color: #E879F9; box-shadow: 0 0 5px #E879F9;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sens-offline"></canvas></div>
+                        <div class="anim-label">OFFLINE</div>
+                        <div class="anim-indicator">
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6B. SENSORS (Sonar) -->
+            <div class="section-block">
+                <div class="section-header"><span class="section-title">HARDWARE: SENSORS (SONAR / DIRECTIONAL)</span></div>
+                <div class="icons-row">
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sonar-idle"></canvas></div>
+                        <div class="anim-label">IDLE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sonar-busy"></canvas></div>
+                        <div class="anim-label">BUSY</div>
+                        <div class="anim-indicator">
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sonar-pulse"></canvas></div>
+                        <div class="anim-label">PULSE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple" style="opacity: 0.5; width: 10px; height: 10px; filter: blur(2px);">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sonar-heartbeat"></canvas></div>
+                        <div class="anim-label">HEART</div>
+                        <div class="anim-indicator">
+                            <div class="dot active" style="background-color: #E879F9; box-shadow: 0 0 5px #E879F9;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-sonar-offline"></canvas></div>
+                        <div class="anim-label">OFFLINE</div>
+                        <div class="anim-indicator">
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 7. HYBRID (Compute + Radar) -->
+            <div class="section-block">
+                <div class="section-header"><span class="section-title">HARDWARE: HYBRID (COMPUTE + SENSORS)</span>
+                </div>
+                <div class="icons-row">
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-hyb-idle"></canvas></div>
+                        <div class="anim-label">IDLE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-hyb-busy"></canvas></div>
+                        <div class="anim-label">BUSY</div>
+                        <div class="anim-indicator">
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                            <div class="dot active"></div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-hyb-pulse"></canvas></div>
+                        <div class="anim-label">PULSE</div>
+                        <div class="anim-indicator">
+                            <div class="dot purple" style="opacity: 0.5; width: 10px; height: 10px; filter: blur(2px);">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-hyb-heartbeat"></canvas></div>
+                        <div class="anim-label">HEART</div>
+                        <div class="anim-indicator">
+                            <div class="dot active" style="background-color: #E879F9; box-shadow: 0 0 5px #E879F9;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="anim-state-item">
+                        <div class="anim-canvas-wrapper"><canvas id="canvas-hyb-offline"></canvas></div>
+                        <div class="anim-label">OFFLINE</div>
+                        <div class="anim-indicator">
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bottom-section">
+            <div class="palette-header">FUNCTIONAL PALETTE</div>
+            <div class="color-palette-container">
+                <div class="color-picker-wrapper"><input type="color" id="c1" value="#8B5CF6"></div>
+                <div class="color-picker-wrapper"><input type="color" id="c2" value="#3B82F6"></div>
+                <div class="color-picker-wrapper"><input type="color" id="c3" value="#06B6D4"></div>
+            </div>
+
+            <div class="iterations-list">
+                <div class="iteration-item">
+                    <div class="iteration-title">V1: DORMANT SINE WAVES</div>
+                    <div class="ribbon-container"><canvas id="canvas-bottom-v1"></canvas></div>
+                </div>
+                <div class="iteration-item">
+                    <div class="iteration-title">V4: ORGANIC STREAM GROWTH</div>
+                    <div class="ribbon-container"><canvas id="canvas-bottom-v4"></canvas></div>
+                </div>
+                <div class="iteration-item">
+                    <div class="iteration-title">V5: SILKY PULSE INJECTION</div>
+                    <div class="ribbon-container"><canvas id="canvas-bottom-v5"></canvas></div>
+                </div>
+                <div class="iteration-item">
+                    <div class="iteration-title">V6: TWO-WAY SILKY PULSE</div>
+                    <div class="ribbon-container"><canvas id="canvas-bottom-v6"></canvas></div>
+                </div>
+                <div class="iteration-item">
+                    <div class="iteration-title">V7: TWO-WAY DORMANT SINE WAVES</div>
+                    <div class="ribbon-container"><canvas id="canvas-bottom-v7"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isPaused = false;
+        let globalTime = 0;
+        let isLightMode = false;
+
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            isLightMode = !isLightMode;
+            document.documentElement.setAttribute('data-theme', isLightMode ? 'light' : 'dark');
+        });
+
+        document.body.addEventListener('click', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+            isPaused = !isPaused;
+            document.getElementById('pauseStatus').innerText = isPaused ? 'PAUSED (Click screen to PLAY)' : 'Click screen to PAUSE/PLAY';
+        });
+
+        function setupCanvas(id, width, height) {
+            const canvas = document.getElementById(id);
+            const ctx = canvas.getContext('2d', { alpha: true });
+            const dpr = window.devicePixelRatio || 1;
+            canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
+            canvas.width = width * dpr; canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+            return { canvas, ctx, width, height };
+        }
+
+        function getBlendMode() { return isLightMode ? 'multiply' : 'lighter'; }
+        function getSparkColor() { return isLightMode ? '#1A202C' : '#FFFFFF'; }
+
+        class PRNG {
+            constructor(seed) { this.seed = seed; }
+            next() { this.seed = (this.seed * 9301 + 49297) % 233280; return this.seed / 233280; }
+        }
+
+        // Global Colors setup
+        let activeColors = { c1: { r: 139, g: 92, b: 246 }, c2: { r: 59, g: 130, b: 246 }, c3: { r: 6, g: 182, b: 212 } };
+        function hexToRgb(hex) {
+            let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+        }
+        function updateColors() {
+            activeColors.c1 = hexToRgb(document.getElementById('c1').value);
+            activeColors.c2 = hexToRgb(document.getElementById('c2').value);
+            activeColors.c3 = hexToRgb(document.getElementById('c3').value);
+        }
+        document.getElementById('c1').addEventListener('input', updateColors);
+        document.getElementById('c2').addEventListener('input', updateColors);
+        document.getElementById('c3').addEventListener('input', updateColors);
+
+        // Math utilities
+        function lerpVal(a, b, t) { return a + (b - a) * t; }
+        function lerp(a, b, t) { return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; }
+
+        function getHeartPoint(angle, scale) {
+            let hx = scale * 16 * Math.pow(Math.sin(angle), 3);
+            let hy = -scale * (13 * Math.cos(angle) - 5 * Math.cos(2 * angle) - 2 * Math.cos(3 * angle) - Math.cos(4 * angle));
+            return { x: hx, y: hy };
+        }
+
+        function splitBezier(t, p0, p1, p2, p3) {
+            const q0 = p0; const q1 = lerp(p0, p1, t); const q2_temp = lerp(p1, p2, t); const q3_temp = lerp(p2, p3, t);
+            const q2 = lerp(q1, q2_temp, t); const q3_temp2 = lerp(q2_temp, q3_temp, t); const q3 = lerp(q2, q3_temp2, t);
+            return [q0, q1, q2, q3];
+        }
+
+        function getBezierPoint(t, p0, p1, p2, p3) {
+            let mt = 1 - t;
+            return {
+                x: mt * mt * mt * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t * t * t * p3.x,
+                y: mt * mt * mt * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t * t * t * p3.y
+            };
+        }
+
+        // --- Core Drawing Logic ---
+        function drawEtherealBundle(ctx, prng, opts) {
+            const { startX, startY, cp1x, cp1y, cp2x, cp2y, endX, endY, count, spread, color1, color2, widthMultiplier = 1, timeOffset = 0, time = globalTime, progress = 1, state = 'idle' } = opts;
+            ctx.globalCompositeOperation = getBlendMode();
+
+            let threads = [];
+
+            for (let i = 0; i < count; i++) {
+                const n1 = (prng.next() - 0.5) * 2, n2 = (prng.next() - 0.5) * 2;
+                const n3 = (prng.next() - 0.5) * 2, n4 = (prng.next() - 0.5) * 2;
+
+                const timePhase = prng.next() * Math.PI * 2;
+                const slowT = time * 0.0004;
+                let wave1 = (Math.sin(time * 0.002 + i * 0.3 + timeOffset + timePhase) + Math.cos(slowT * 1.7 + i)) * 6;
+                let wave2 = (Math.cos(time * 0.0025 + i * 0.2 + timeOffset - timePhase) + Math.sin(slowT * 1.3 - i)) * 6;
+
+                let tipWanderX = Math.sin(time * 0.0015 + timePhase) * 6;
+                let tipWanderY = Math.cos(time * 0.0017 - timePhase) * 6;
+
+                let p0 = { x: startX + n1 * spread * 0.1, y: startY + n2 * spread * 0.1 };
+                let p1 = { x: cp1x + n1 * spread + wave1, y: cp1y + n2 * spread + wave2 };
+                let p2 = { x: cp2x + n3 * spread - wave1, y: cp2y + n4 * spread - wave2 };
+                let p3 = { x: endX + n3 * spread * 0.3 + tipWanderX, y: endY + n4 * spread * 0.3 + tipWanderY };
+
+                let lenT = 0.5 + Math.pow(prng.next(), 0.5) * 0.5;
+                lenT *= Math.max(0, Math.min(1, progress));
+
+                if (lenT <= 0.01) continue;
+
+                let pts = splitBezier(lenT, p0, p1, p2, p3);
+                threads.push({ pts, fullP3: p3 });
+            }
+
+            if (threads.length === 0) return;
+
+            threads.sort((a, b) => {
+                let angleA = Math.atan2(a.fullP3.y - startY, a.fullP3.x - startX);
+                let angleB = Math.atan2(b.fullP3.y - startY, b.fullP3.x - startX);
+                return angleA - angleB;
+            });
+
+            // Make the connecting webs slightly bolder
+            for (let i = 0; i < threads.length - 1; i++) {
+                let t1 = threads[i].pts;
+                let t2 = threads[i + 1].pts;
+
+                ctx.beginPath();
+                ctx.moveTo(t1[0].x, t1[0].y);
+                ctx.bezierCurveTo(t1[1].x, t1[1].y, t1[2].x, t1[2].y, t1[3].x, t1[3].y);
+                ctx.lineTo(t2[3].x, t2[3].y);
+                ctx.bezierCurveTo(t2[2].x, t2[2].y, t2[1].x, t2[1].y, t2[0].x, t2[0].y);
+                ctx.closePath();
+
+                const grad = ctx.createLinearGradient(startX, startY, endX, endY);
+                // Boosted web opacity so the streams look silky and connected
+                let baseAlpha = isLightMode ? 0.3 : 0.4;
+                let webAlpha = baseAlpha + prng.next() * (baseAlpha * 0.5);
+
+                grad.addColorStop(0, color1.replace('ALPHA', webAlpha.toFixed(3)));
+                grad.addColorStop(1, color2.replace('ALPHA', (webAlpha * 0.6).toFixed(3)));
+
+                ctx.fillStyle = grad; ctx.fill();
+
+                let linksToDraw = 1 + Math.floor(prng.next() * 3);
+                for (let l = 0; l < linksToDraw; l++) {
+                    let linkT = 0.2 + prng.next() * 0.7;
+                    let pA = getBezierPoint(linkT, t1[0], t1[1], t1[2], t1[3]);
+                    let pB = getBezierPoint(linkT, t2[0], t2[1], t2[2], t2[3]);
+
+                    ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB.x, pB.y);
+                    ctx.strokeStyle = color2.replace('ALPHA', isLightMode ? '0.4' : '0.6');
+                    ctx.lineWidth = 0.25 * widthMultiplier;
+                    ctx.stroke();
+                }
+            }
+
+            ctx.lineWidth = 0.75 * widthMultiplier;
+            threads.forEach((tData, i) => {
+                let pts = tData.pts;
+                ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+                ctx.bezierCurveTo(pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y);
+
+                const grad = ctx.createLinearGradient(startX, startY, endX, endY);
+                let threadAlpha = (isLightMode ? 0.4 : 0.6) + prng.next() * 0.4;
+                grad.addColorStop(0, color1.replace('ALPHA', threadAlpha.toFixed(3)));
+                grad.addColorStop(1, color2.replace('ALPHA', threadAlpha.toFixed(3)));
+
+                ctx.strokeStyle = grad; ctx.stroke();
+
+                ctx.beginPath(); ctx.arc(pts[3].x, pts[3].y, 1 * widthMultiplier, 0, Math.PI * 2);
+                ctx.fillStyle = color2.replace('ALPHA', isLightMode ? '0.7' : '0.9'); ctx.fill();
+            });
+
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // --- Common Setup for Avatars ---
+        function getAvatarColors(state, pulseColorShift, morph) {
+            let isOffline = state === 'offline';
+            let c1, c2, c3;
+
+            if (isOffline) {
+                let offBase = isLightMode ? '160, 170, 180' : '70, 75, 85';
+                let offSec = isLightMode ? '140, 150, 160' : '50, 60, 70';
+                c1 = `rgba(${offBase}, ALPHA)`;
+                c2 = `rgba(${offSec}, ALPHA)`;
+                c3 = `rgba(${offSec}, ALPHA)`;
+            } else {
+                let pr = Math.min(255, activeColors.c1.r + pulseColorShift);
+                let cg = state === 'heartbeat' ? Math.max(50, activeColors.c3.g - morph * 100) : activeColors.c3.g;
+                let cb = state === 'heartbeat' ? Math.max(100, activeColors.c3.b - morph * 50) : activeColors.c3.b;
+
+                c1 = `rgba(${pr}, ${activeColors.c1.g}, ${activeColors.c1.b}, ALPHA)`;
+                c2 = `rgba(${activeColors.c2.r}, ${activeColors.c2.g}, ${activeColors.c2.b}, ALPHA)`;
+                c3 = `rgba(${activeColors.c3.r}, ${cg}, ${cb}, ALPHA)`;
+            }
+            return { c1, c2, c3, isOffline };
+        }
+
+        function getAvatarTime(t, state, morph) {
+            let localTime = Math.max(0, t);
+            let pulseScale = 1;
+            let pulseColorShift = 0;
+
+            if (state === 'offline') localTime = Math.max(0, t * 0.02);
+            else if (state === 'idle') localTime = Math.max(0, t * 0.3);
+            else if (state === 'busy') localTime = Math.max(0, t * 1.5);
+            else if (state === 'pulse') {
+                localTime = Math.max(0, t * 1.5);
+                pulseScale = 1 + Math.sin(localTime * 0.004) * 0.05;
+                pulseColorShift = Math.sin(localTime * 0.003) * 50;
+            }
+            else if (state === 'heartbeat') {
+                localTime = Math.max(0, t * 0.5);
+                if (morph > 0.99) {
+                    let beatTime = Math.max(0, t % 1200);
+                    if (beatTime < 150) pulseScale = 1 + (beatTime / 150) * 0.1;
+                    else if (beatTime < 300) pulseScale = 1.1 - ((beatTime - 150) / 150) * 0.1;
+                    else if (beatTime < 450) pulseScale = 1 + ((beatTime - 300) / 150) * 0.15;
+                    else if (beatTime < 700) pulseScale = 1.15 - ((beatTime - 450) / 250) * 0.15;
+                }
+                pulseColorShift = morph * 100;
+            }
+            return { localTime, pulseScale, pulseColorShift };
+        }
+
+
+        // --- Render AI Velvet V ---
+        function renderVelvetV(ctx, w, h, scale, t, state = 'normal', morph = 0) {
+            const prng = new PRNG(12345);
+            let { localTime, pulseScale, pulseColorShift } = getAvatarTime(t, state, morph);
+            let { c1, c2, c3 } = getAvatarColors(state, pulseColorShift, morph);
+
+            ctx.save();
+            ctx.translate(w / 2, h / 2 + (h * 0.1));
+            ctx.scale(scale * pulseScale, scale * pulseScale);
+
+            const rX = 0, rY = 60;
+
+            const b1 = { cp1x: -40, cp1y: 0, cp2x: -120, cp2y: -60, endX: -80, endY: -140 };
+            const b2 = { cp1x: -20, cp1y: 20, cp2x: -60, cp2y: -40, endX: -20, endY: -80 };
+            const b3 = { cp1x: 20, cp1y: 20, cp2x: 40, cp2y: -40, endX: 20, endY: -90 };
+            const b4 = { cp1x: 60, cp1y: 30, cp2x: 100, cp2y: -40, endX: 80, endY: -110 };
+
+            const b1h = { cp1x: -100, cp1y: -20, cp2x: -80, cp2y: -120, endX: 0, endY: -50 };
+            const b2h = { cp1x: -60, cp1y: 10, cp2x: -40, cp2y: -70, endX: 0, endY: -30 };
+            const b3h = { cp1x: 60, cp1y: 10, cp2x: 40, cp2y: -70, endX: 0, endY: -30 };
+            const b4h = { cp1x: 100, cp1y: -20, cp2x: 80, cp2y: -120, endX: 0, endY: -50 };
+
+            let easeMorph = -(Math.cos(Math.PI * morph) - 1) / 2;
+
+            drawEtherealBundle(ctx, prng, {
+                startX: rX, startY: rY,
+                cp1x: lerpVal(b1.cp1x, b1h.cp1x, easeMorph), cp1y: lerpVal(b1.cp1y, b1h.cp1y, easeMorph),
+                cp2x: lerpVal(b1.cp2x, b1h.cp2x, easeMorph), cp2y: lerpVal(b1.cp2y, b1h.cp2y, easeMorph),
+                endX: lerpVal(b1.endX, b1h.endX, easeMorph), endY: lerpVal(b1.endY, b1h.endY, easeMorph),
+                count: 4, spread: 35, color1: c1, color2: c2, timeOffset: t * 0.001, time: localTime, state: state
+            });
+            drawEtherealBundle(ctx, prng, {
+                startX: rX, startY: rY,
+                cp1x: lerpVal(b2.cp1x, b2h.cp1x, easeMorph), cp1y: lerpVal(b2.cp1y, b2h.cp1y, easeMorph),
+                cp2x: lerpVal(b2.cp2x, b2h.cp2x, easeMorph), cp2y: lerpVal(b2.cp2y, b2h.cp2y, easeMorph),
+                endX: lerpVal(b2.endX, b2h.endX, easeMorph), endY: lerpVal(b2.endY, b2h.endY, easeMorph),
+                count: 2, spread: 15, color1: c1, color2: c3, timeOffset: t * 0.0015, time: localTime, state: state
+            });
+            drawEtherealBundle(ctx, prng, {
+                startX: rX, startY: rY,
+                cp1x: lerpVal(b3.cp1x, b3h.cp1x, easeMorph), cp1y: lerpVal(b3.cp1y, b3h.cp1y, easeMorph),
+                cp2x: lerpVal(b3.cp2x, b3h.cp2x, easeMorph), cp2y: lerpVal(b3.cp2y, b3h.cp2y, easeMorph),
+                endX: lerpVal(b3.endX, b3h.endX, easeMorph), endY: lerpVal(b3.endY, b3h.endY, easeMorph),
+                count: 3, spread: 20, color1: c2, color2: c3, timeOffset: t * 0.0012 + 100, time: localTime, state: state
+            });
+            drawEtherealBundle(ctx, prng, {
+                startX: rX, startY: rY,
+                cp1x: lerpVal(b4.cp1x, b4h.cp1x, easeMorph), cp1y: lerpVal(b4.cp1y, b4h.cp1y, easeMorph),
+                cp2x: lerpVal(b4.cp2x, b4h.cp2x, easeMorph), cp2y: lerpVal(b4.cp2y, b4h.cp2y, easeMorph),
+                endX: lerpVal(b4.endX, b4h.endX, easeMorph), endY: lerpVal(b4.endY, b4h.endY, easeMorph),
+                count: 4, spread: 30, color1: c1, color2: c2, timeOffset: t * 0.001 + 200, time: localTime, state: state
+            });
+
+            ctx.restore();
+        }
+
+        // --- Render AI Busy Node (for the standalone AI animation state) ---
+        function renderBusy(ctx, w, h, scale, t) {
+            const prng = new PRNG(999);
+            ctx.save();
+            ctx.translate(w / 2, h / 2);
+
+            let safeT = Math.max(0, t);
+            let baseRot = safeT * 0.003; // Faster rotation
+            let pulseScale = 1 + Math.sin(safeT * 0.008) * 0.08; // Pulsating scale
+
+            ctx.scale(scale * pulseScale, scale * pulseScale);
+            ctx.rotate(baseRot);
+
+            let c1 = `rgba(${activeColors.c1.r}, ${activeColors.c1.g}, ${activeColors.c1.b}, ALPHA)`;
+            let c3 = `rgba(${activeColors.c3.r}, ${activeColors.c3.g}, ${activeColors.c3.b}, ALPHA)`;
+
+            // Three sweeping interlocked bundles that fill the canvas
+            for (let i = 0; i < 3; i++) {
+                let wander = Math.sin(safeT * 0.002 + i) * 8;
+                drawEtherealBundle(ctx, prng, {
+                    startX: 50 + wander, startY: 0,
+                    cp1x: 50 + wander, cp1y: 40,
+                    cp2x: -10, cp2y: 50,
+                    endX: -24 - wander, endY: 42,
+                    count: 4, spread: 25,
+                    color1: c1, color2: c3,
+                    timeOffset: safeT * 0.001 + (i * 100), time: safeT
+                });
+                ctx.rotate(Math.PI * 2 / 3);
+            }
+            ctx.restore();
+        }
+
+        // --- Render Human: Clean UI Profile ---
+        function renderHumanClean(ctx, w, h, scale, t, state = 'idle', morph = 0) {
+            let { localTime, pulseScale, pulseColorShift } = getAvatarTime(t, state, morph);
+            let { c1, c2, c3, isOffline } = getAvatarColors(state, pulseColorShift, morph);
+
+            ctx.save();
+
+            let floatY = (state === 'idle' && !isOffline) ? Math.sin(localTime * 0.002) * 2 : 0;
+            ctx.translate(w / 2, h / 2 + floatY);
+            ctx.scale(scale * pulseScale * 1.8, scale * pulseScale * 1.8);
+
+            let easeMorph = -(Math.cos(Math.PI * morph) - 1) / 2;
+            let profileAlpha = 1 - easeMorph;
+            let heartAlpha = easeMorph;
+
+            let fillGrad = ctx.createLinearGradient(-15, -20, 15, 20);
+            if (isOffline) {
+                fillGrad.addColorStop(0, isLightMode ? '#E2E8F0' : '#2D3748');
+                fillGrad.addColorStop(1, isLightMode ? '#CBD5E0' : '#1A202C');
+            } else {
+                fillGrad.addColorStop(0, c1.replace('ALPHA', '0.7'));
+                fillGrad.addColorStop(1, c3.replace('ALPHA', '0.7'));
+            }
+
+            let strokeColor = isOffline ? (isLightMode ? '#A0AEC0' : '#4A5B7A') : c2.replace('ALPHA', '1');
+
+            ctx.globalCompositeOperation = 'source-over';
+
+            if (profileAlpha > 0.01) {
+                ctx.save();
+                ctx.globalAlpha = profileAlpha;
+
+                if (state === 'busy') {
+                    ctx.beginPath();
+                    ctx.arc(0, 2, 24, localTime * 0.005, localTime * 0.005 + Math.PI * 0.7);
+                    ctx.strokeStyle = c3.replace('ALPHA', '1');
+                    ctx.lineWidth = 2.5;
+                    ctx.lineCap = 'round';
+                    if (!isLightMode) { ctx.shadowColor = c3.replace('ALPHA', '1'); ctx.shadowBlur = 8; }
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                }
+
+                if (!isLightMode && !isOffline && state === 'pulse') {
+                    ctx.beginPath();
+                    ctx.arc(0, 2, 20, 0, Math.PI * 2);
+                    ctx.fillStyle = c1.replace('ALPHA', '0.2');
+                    ctx.shadowColor = c1.replace('ALPHA', '1');
+                    ctx.shadowBlur = 20;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.beginPath();
+                ctx.arc(0, -9, 8, 0, Math.PI * 2);
+                ctx.fillStyle = fillGrad;
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = strokeColor;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(-16, 16);
+                ctx.bezierCurveTo(-16, 4, -9, 1, 0, 1);
+                ctx.bezierCurveTo(9, 1, 16, 4, 16, 16);
+                ctx.lineTo(-16, 16);
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.moveTo(-16, 16);
+                ctx.bezierCurveTo(-16, 4, -9, 1, 0, 1);
+                ctx.bezierCurveTo(9, 1, 16, 4, 16, 16);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            if (heartAlpha > 0.01) {
+                ctx.save();
+                ctx.globalAlpha = heartAlpha;
+                ctx.beginPath();
+                for (let a = 0; a <= Math.PI * 2 + 0.1; a += 0.1) {
+                    let hrScale = 1.2;
+                    let hx = hrScale * 16 * Math.pow(Math.sin(a), 3);
+                    let hy = -hrScale * (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) + 2;
+                    if (a === 0) ctx.moveTo(hx, hy);
+                    else ctx.lineTo(hx, hy);
+                }
+                ctx.closePath();
+                ctx.fillStyle = fillGrad;
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = strokeColor;
+                ctx.stroke();
+
+                if (!isLightMode && !isOffline) {
+                    ctx.shadowColor = c1.replace('ALPHA', '1');
+                    ctx.shadowBlur = 15;
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
+
+        // --- Render Robot: Interlocking Gears ---
+        function renderRobotGears(ctx, w, h, scale, t, state = 'idle', morph = 0) {
+            let { localTime, pulseScale, pulseColorShift } = getAvatarTime(t, state, morph);
+            let { c1, c2, c3, isOffline } = getAvatarColors(state, pulseColorShift, morph);
+
+            ctx.save();
+            ctx.translate(w / 2, h / 2);
+            ctx.scale(scale * pulseScale * 1.1, scale * pulseScale * 1.1);
+            ctx.globalCompositeOperation = getBlendMode();
+
+            let easeMorph = -(Math.cos(Math.PI * morph) - 1) / 2;
+            let speed = (state === 'busy') ? 0.005 : 0.001;
+            if (isOffline) speed = 0;
+
+            const drawGear = (cx, cy, baseR, teeth, rotOffset, color, isMain) => {
+                ctx.save();
+                let tCx = isMain ? lerpVal(cx, 0, easeMorph) : cx;
+                let tCy = isMain ? lerpVal(cy, 0, easeMorph) : cy;
+
+                ctx.translate(tCx, tCy);
+                let currentRot = localTime * speed + rotOffset;
+                if (isMain) currentRot = lerpVal(currentRot, 0, easeMorph);
+                ctx.rotate(currentRot);
+
+                ctx.beginPath();
+                for (let a = 0; a <= Math.PI * 2 + 0.1; a += 0.05) {
+                    let toothH = 4;
+                    let r = baseR + Math.pow(Math.sin(a * teeth * 0.5), 2) * toothH * 2;
+                    let px = Math.cos(a) * r;
+                    let py = Math.sin(a) * r;
+
+                    if (isMain) {
+                        let hrScale = (baseR + toothH) * 0.06;
+                        let hx = hrScale * 16 * Math.pow(Math.sin(a), 3);
+                        let hy = -hrScale * (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) - 5;
+
+                        let heartToothR = Math.sqrt(hx * hx + hy * hy) + Math.pow(Math.sin(a * teeth * 0.5), 2) * toothH;
+                        let hAngle = Math.atan2(hy, hx);
+                        hx = Math.cos(hAngle) * heartToothR;
+                        hy = Math.sin(hAngle) * heartToothR;
+
+                        px = lerpVal(px, hx, easeMorph);
+                        py = lerpVal(py, hy, easeMorph);
+                    }
+
+                    if (a === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+
+                let alpha = isOffline ? '0.3' : '0.8';
+                if (!isMain) alpha = isOffline ? '0.3' : (0.8 * (1 - easeMorph)).toFixed(2);
+
+                ctx.strokeStyle = color.replace('ALPHA', alpha);
+                ctx.lineWidth = isLightMode ? 2 : 2.5;
+                if (!isLightMode && !isOffline && alpha > 0.1) {
+                    ctx.shadowColor = ctx.strokeStyle;
+                    ctx.shadowBlur = 10;
+                }
+                ctx.stroke(); ctx.shadowBlur = 0;
+
+                if ((!isMain || easeMorph < 0.5) && alpha > 0.1) {
+                    ctx.beginPath(); ctx.arc(0, 0, baseR * 0.3, 0, Math.PI * 2);
+                    ctx.strokeStyle = c3.replace('ALPHA', alpha);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            };
+
+            drawGear(-12, 10, 18, 12, 0, c1, true);
+            drawGear(16, -12, 12, 8, 0.2, c2, false);
+
+            if (state === 'busy') {
+                for (let i = 0; i < 3; i++) {
+                    let sx = 2 + (Math.random() - 0.5) * 10;
+                    let sy = -2 + (Math.random() - 0.5) * 10;
+                    ctx.beginPath(); ctx.arc(sx, sy, Math.random() * 2, 0, Math.PI * 2);
+                    ctx.fillStyle = getSparkColor(); ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // --- Render Astrolabe (Navigation / Systems) ---
+        function renderAstrolabe(ctx, w, h, scale, t, state = 'idle', morph = 0) {
+            let { localTime, pulseScale, pulseColorShift } = getAvatarTime(t, state, morph);
+            let { c1, c2, c3, isOffline } = getAvatarColors(state, pulseColorShift, morph);
+
+            ctx.save();
+            ctx.translate(w / 2, h / 2);
+            ctx.scale(scale * pulseScale * 1.3, scale * pulseScale * 1.3);
+            ctx.globalCompositeOperation = getBlendMode();
+
+            let easeMorph = -(Math.cos(Math.PI * morph) - 1) / 2;
+            let speed = (state === 'busy') ? 0.006 : 0.001;
+            if (isOffline) speed = 0;
+
+            const drawRing = (radius, rx, ry, rz, color, width, isMain) => {
+                ctx.beginPath();
+                for (let a = 0; a <= Math.PI * 2 + 0.1; a += 0.1) {
+                    let x = Math.cos(a) * radius;
+                    let y = Math.sin(a) * radius;
+                    let z = 0;
+
+                    let y1 = y * Math.cos(rx) - z * Math.sin(rx);
+                    let z1 = y * Math.sin(rx) + z * Math.cos(rx);
+                    let x2 = x * Math.cos(ry) + z1 * Math.sin(ry);
+                    let z2 = -x * Math.sin(ry) + z1 * Math.cos(ry);
+                    let x3 = x2 * Math.cos(rz) - y1 * Math.sin(rz);
+                    let y3 = x2 * Math.sin(rz) + y1 * Math.cos(rz);
+
+                    let hx = x3, hy = y3;
+                    if (isMain) {
+                        let hrScale = radius * 0.05;
+                        hx = hrScale * 16 * Math.pow(Math.sin(a), 3);
+                        hy = -hrScale * (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) - 5;
+                    } else {
+                        hx = Math.cos(a) * (radius * 0.5);
+                        hy = Math.sin(a) * (radius * 0.5);
+                    }
+
+                    let fx = lerpVal(x3, hx, easeMorph);
+                    let fy = lerpVal(y3, hy, easeMorph);
+
+                    if (a === 0) ctx.moveTo(fx, fy);
+                    else ctx.lineTo(fx, fy);
+                }
+
+                let alpha = isOffline ? '0.3' : '0.8';
+                if (!isMain) alpha = isOffline ? '0.2' : (0.6 * (1 - easeMorph * 0.5)).toFixed(2);
+
+                ctx.strokeStyle = color.replace('ALPHA', alpha);
+                ctx.lineWidth = isLightMode ? width * 0.8 : width;
+                if (!isLightMode && !isOffline && alpha > 0.3) {
+                    ctx.shadowColor = ctx.strokeStyle;
+                    ctx.shadowBlur = 8;
+                }
+                ctx.stroke(); ctx.shadowBlur = 0;
+
+                if (!isOffline && alpha > 0.3) {
+                    [0, Math.PI].forEach(angle => {
+                        let x = Math.cos(angle) * radius;
+                        let y = Math.sin(angle) * radius;
+                        let y1 = y * Math.cos(rx);
+                        let x2 = x * Math.cos(ry) + (y * Math.sin(rx)) * Math.sin(ry);
+                        let nx = x2 * Math.cos(rz) - y1 * Math.sin(rz);
+                        let ny = x2 * Math.sin(rz) + y1 * Math.cos(rz);
+
+                        let hx = nx, hy = ny;
+                        if (isMain) {
+                            let hrScale = radius * 0.05;
+                            hx = hrScale * 16 * Math.pow(Math.sin(angle), 3);
+                            hy = -hrScale * (13 * Math.cos(angle) - 5 * Math.cos(2 * angle) - 2 * Math.cos(3 * angle) - Math.cos(4 * angle)) - 5;
+                        } else {
+                            hx = Math.cos(angle) * (radius * 0.5);
+                            hy = Math.sin(angle) * (radius * 0.5);
+                        }
+
+                        ctx.beginPath();
+                        ctx.arc(lerpVal(nx, hx, easeMorph), lerpVal(ny, hy, easeMorph), 2, 0, Math.PI * 2);
+                        ctx.fillStyle = getSparkColor();
+                        ctx.fill();
+                    });
+                }
+            };
+
+            drawRing(28, 0, 0, localTime * speed * 0.5, c1, 2.5, true);
+            drawRing(22, localTime * speed, 0, -localTime * speed * 0.8, c3, 1.5, false);
+            drawRing(16, 0, localTime * speed * 1.2, localTime * speed, c2, 1.5, false);
+
+            ctx.beginPath();
+            let coreR = (state === 'pulse') ? 5 : 3;
+            ctx.arc(0, 0, coreR, 0, Math.PI * 2);
+            ctx.fillStyle = c3.replace('ALPHA', isOffline ? '0.4' : '1');
+            if (!isLightMode && !isOffline) { ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 15; }
+            ctx.fill(); ctx.shadowBlur = 0;
+
+            ctx.restore();
+        }
+
+        // --- Render Hardware: Compute ---
+        function renderComputer(ctx, w, h, scale, t, state = 'idle', morph = 0) {
+            let { localTime, pulseScale, pulseColorShift } = getAvatarTime(t, state, morph);
+            let { c1, c2, c3, isOffline } = getAvatarColors(state, pulseColorShift, morph);
+
+            ctx.save();
+            ctx.translate(w / 2, h / 2);
+            ctx.scale(scale * pulseScale * 1.1, scale * pulseScale * 1.1);
+            ctx.globalCompositeOperation = getBlendMode();
+
+            let easeMorph = -(Math.cos(Math.PI * morph) - 1) / 2;
+
+            // Central Processor Die
+            let dieSize = 10 + easeMorph * 5;
+            let dieRot = (state === 'busy') ? localTime * 0.005 : 0;
+            if (easeMorph > 0.1) dieRot = 0;
+
+            ctx.save();
+            ctx.beginPath();
+            for (let a = 0; a <= Math.PI * 2 + 0.1; a += 0.1) {
+                // Idle/Busy: Diamond Shape
+                let cosA = Math.cos(a - dieRot);
+                let sinA = Math.sin(a - dieRot);
+                let radius = dieSize / (Math.max(0.0001, Math.abs(cosA) + Math.abs(sinA)));
+                let px = Math.cos(a) * radius;
+                let py = Math.sin(a) * radius;
+
+                // Heartbeat: Solid Heart Shape
+                let hp = getHeartPoint(a, 1.0);
+                hp.y -= 5;
+
+                let x = lerpVal(px, hp.x, easeMorph);
+                let y = lerpVal(py, hp.y, easeMorph);
+                if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.strokeStyle = c3.replace('ALPHA', isOffline ? '0.3' : '0.9');
+            let fillAlpha = (state === 'busy' && !isOffline) ? (0.2 + Math.sin(localTime * 0.02) * 0.2) : 0;
+            if (easeMorph > 0) fillAlpha = lerpVal(fillAlpha, 0.4, easeMorph);
+            ctx.fillStyle = c1.replace('ALPHA', fillAlpha.toFixed(2));
+            ctx.lineWidth = isLightMode ? 2 : 2.5;
+            if (!isLightMode && !isOffline) { ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 10; }
+            ctx.fill();
+            ctx.stroke(); ctx.shadowBlur = 0;
+            ctx.restore();
+
+            // Data Buses
+            let lines = 8;
+            for (let i = 0; i < lines; i++) {
+                let a = i * (Math.PI * 2 / lines);
+                let startR = 14;
+                let midR = 22;
+                let endR = 32;
+
+                let px1 = Math.cos(a) * startR, py1 = Math.sin(a) * startR;
+
+                let bendA = a + Math.PI / 8;
+                let px2 = Math.cos(bendA) * midR, py2 = Math.sin(bendA) * midR;
+                let px3 = Math.cos(bendA) * endR, py3 = Math.sin(bendA) * endR;
+
+                let hp1 = getHeartPoint(a, 1.3); hp1.y -= 5;
+                let hp2 = getHeartPoint(a + 0.15, 1.3); hp2.y -= 5;
+                let hp3 = getHeartPoint(a + 0.3, 1.3); hp3.y -= 5;
+
+                let x1 = lerpVal(px1, hp1.x, easeMorph); let y1 = lerpVal(py1, hp1.y, easeMorph);
+                let x2 = lerpVal(px2, hp2.x, easeMorph); let y2 = lerpVal(py2, hp2.y, easeMorph);
+                let x3 = lerpVal(px3, hp3.x, easeMorph); let y3 = lerpVal(py3, hp3.y, easeMorph);
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3);
+
+                let linePulse = (state === 'busy') ? 0.3 + Math.sin(localTime * 0.01 + i) * 0.3 : 0;
+                let alpha = isOffline ? 0.2 : 0.4 + linePulse;
+
+                let col = (i % 2 === 0 ? c1 : c2).replace('ALPHA', alpha.toFixed(2));
+                ctx.strokeStyle = col;
+                ctx.lineWidth = isLightMode ? 1.5 : (2 + linePulse * 2);
+                if (!isLightMode && !isOffline && state === 'busy') {
+                    ctx.shadowColor = col; ctx.shadowBlur = 5;
+                }
+                ctx.stroke(); ctx.shadowBlur = 0;
+
+                if (state === 'busy') {
+                    for (let j = 0; j < 2; j++) {
+                        let p = (localTime * 0.004 + i * 0.2 + j * 0.5) % 1;
+                        let sx, sy;
+                        if (p < 0.5) {
+                            let np = p * 2;
+                            sx = lerpVal(x1, x2, np); sy = lerpVal(y1, y2, np);
+                        } else {
+                            let np = (p - 0.5) * 2;
+                            sx = lerpVal(x2, x3, np); sy = lerpVal(y2, y3, np);
+                        }
+                        ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+                        ctx.fillStyle = getSparkColor();
+                        if (!isLightMode) { ctx.shadowColor = c3.replace('ALPHA', '1'); ctx.shadowBlur = 8; }
+                        ctx.fill(); ctx.shadowBlur = 0;
+                    }
+                }
+            }
+            ctx.restore();
+        }
+
+        // --- Render Hardware: Sensor (Radar Sweep) ---
+        function renderSensorRadar(ctx, w, h, scale, t, state = 'idle', morph = 0) {
+            let { localTime, pulseScale, pulseColorShift } = getAvatarTime(t, state, morph);
+            let { c1, c2, c3, isOffline } = getAvatarColors(state, pulseColorShift, morph);
+
+            ctx.save();
+            ctx.translate(w / 2, h / 2);
+            ctx.scale(scale * pulseScale * 1.1, scale * pulseScale * 1.1);
+            ctx.globalCompositeOperation = getBlendMode();
+
+            let easeMorph = -(Math.cos(Math.PI * morph) - 1) / 2;
+            let speed = (state === 'busy') ? 0.005 : 0.002;
+            if (isOffline) speed = 0;
+
+            // Concentric Rings -> Nested Hearts
+            for (let r of [10, 20, 30]) {
+                ctx.beginPath();
+                for (let a = 0; a <= Math.PI * 2 + 0.1; a += 0.1) {
+                    let px = Math.cos(a) * r;
+                    let py = Math.sin(a) * r;
+                    let hp = getHeartPoint(a, r * 0.05); hp.y -= r * 0.1;
+                    let x = lerpVal(px, hp.x, easeMorph);
+                    let y = lerpVal(py, hp.y, easeMorph);
+                    if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.strokeStyle = c2.replace('ALPHA', isOffline ? '0.2' : '0.5');
+                ctx.lineWidth = isLightMode ? 1 : 1.5;
+                ctx.stroke();
+            }
+
+            // Crosshairs
+            if (easeMorph < 0.5) {
+                ctx.beginPath();
+                ctx.moveTo(-35, 0); ctx.lineTo(35, 0);
+                ctx.moveTo(0, -35); ctx.lineTo(0, 35);
+                ctx.strokeStyle = c3.replace('ALPHA', isOffline ? '0.1' : '0.3');
+                ctx.stroke();
+            }
+
+            // Radar Sweep Segment
+            if (!isOffline && easeMorph < 0.5) {
+                let angle = localTime * speed;
+                let sweepWidth = Math.PI / 4;
+
+                // Safe sweep drawing across browsers
+                for (let j = 0; j < 20; j++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    let a1 = angle + (j / 20) * sweepWidth;
+                    let a2 = angle + ((j + 1) / 20) * sweepWidth;
+                    ctx.arc(0, 0, 30, a1, a2);
+                    ctx.lineTo(0, 0);
+                    let sweepAlpha = 0.6 * (1 - j / 20);
+                    ctx.fillStyle = c1.replace('ALPHA', sweepAlpha.toFixed(2));
+                    ctx.fill();
+                }
+
+                // Lead beam line
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(Math.cos(angle) * 30, Math.sin(angle) * 30);
+                ctx.strokeStyle = c1.replace('ALPHA', '0.8');
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Pinging Blips
+            if (!isOffline) {
+                const radarPrng = new PRNG(123);
+                for (let i = 0; i < 5; i++) {
+                    let ba = radarPrng.next() * Math.PI * 2;
+                    let br = 5 + radarPrng.next() * 20;
+
+                    let sweepDiff = (localTime * speed) % (Math.PI * 2);
+                    let diff = Math.abs(sweepDiff - ba);
+                    if (diff > Math.PI) diff = Math.PI * 2 - diff;
+
+                    let alpha = Math.max(0, 1 - diff * 2);
+                    if (state === 'pulse') alpha = 1;
+
+                    let px = Math.cos(ba) * br;
+                    let py = Math.sin(ba) * br;
+
+                    let hp = getHeartPoint(ba, br * 0.05); hp.y -= br * 0.1;
+                    let x = lerpVal(px, hp.x, easeMorph);
+                    let y = lerpVal(py, hp.y, easeMorph);
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+                    ctx.fillStyle = c3.replace('ALPHA', alpha.toFixed(2));
+                    if (!isLightMode && alpha > 0.1) {
+                        ctx.shadowColor = c3.replace('ALPHA', '1');
+                        ctx.shadowBlur = 10;
+                    }
+                    ctx.fill(); ctx.shadowBlur = 0;
+                }
+            }
+            ctx.restore();
+        }
+
+        // --- Render Hardware: Sensor (Sonar / Directional) ---
+        function renderSensorSonar(ctx, w, h, scale, t, state = 'idle', morph = 0) {
+            let { localTime, pulseScale, pulseColorShift } = getAvatarTime(t, state, morph);
+            let { c1, c2, c3, isOffline } = getAvatarColors(state, pulseColorShift, morph);
+
+            ctx.save();
+            ctx.translate(w / 2, h / 2);
+            ctx.scale(scale * pulseScale * 1.1, scale * pulseScale * 1.1);
+            ctx.globalCompositeOperation = getBlendMode();
+
+            let easeMorph = -(Math.cos(Math.PI * morph) - 1) / 2;
+            let speed = (state === 'busy') ? 0.008 : 0.003;
+            if (isOffline) speed = 0;
+
+            // "Searching" wobble (slight panning on X axis)
+            let wobble = (state === 'busy' && !isOffline) ? Math.sin(localTime * 0.002) * 0.15 : 0;
+            ctx.rotate(wobble); 
+
+            // 1. Draw Dish -> Morphs into the Solid Inner Heart
+            ctx.beginPath();
+            // In idle/busy, it draws a bottom bowl 'U' (0.15 PI to 0.85 PI). In heartbeat, expands to full 2PI circle.
+            let dishStart = lerpVal(Math.PI * 0.15, 0, easeMorph);
+            let dishEnd = lerpVal(Math.PI * 0.85, Math.PI * 2, easeMorph);
+            
+            for (let a = dishStart; a <= dishEnd + 0.01; a += 0.05) {
+                let px = 12 * Math.cos(a);
+                let py = 2 + 12 * Math.sin(a); // Center of the dish slightly shifted down
+                
+                // Target heart profile
+                let hp = getHeartPoint(a, 0.4);
+                hp.y += 4; 
+
+                let x = lerpVal(px, hp.x, easeMorph);
+                let y = lerpVal(py, hp.y, easeMorph);
+                if (a === dishStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = c3.replace('ALPHA', isOffline ? '0.4' : '0.9');
+            ctx.lineWidth = isLightMode ? 2 : 2.5;
+            if (!isLightMode && !isOffline) { ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 8; }
+            ctx.stroke(); ctx.shadowBlur = 0;
+
+            // Give the heart a soft fill during morph
+            if (easeMorph > 0.05) {
+                ctx.fillStyle = c3.replace('ALPHA', (easeMorph * 0.3).toFixed(2));
+                ctx.fill();
+            }
+
+            // 2. Draw Emitted Waves -> Morphs into Outer Expanding Heart Ripples
+            if (!isOffline) {
+                let numWaves = 3;
+                for (let i = 0; i < numWaves; i++) {
+                    let waveT = (localTime * speed + i / numWaves) % 1;
+                    if (state === 'pulse') waveT = (localTime * 0.005 + i * 0.15) % 1; // Faster, tighter waves
+
+                    let radius = 10 + waveT * 25;
+                    let alpha = (1 - waveT) * (0.8 - easeMorph * 0.2); 
+
+                    ctx.beginPath();
+                    // In idle/busy, it draws a top arc '^' (1.2 PI to 1.8 PI). In heartbeat, expands to full 2PI circle.
+                    let wStart = lerpVal(Math.PI * 1.2, 0, easeMorph);
+                    let wEnd = lerpVal(Math.PI * 1.8, Math.PI * 2, easeMorph);
+
+                    for (let a = wStart; a <= wEnd + 0.01; a += 0.05) {
+                        let px = radius * Math.cos(a);
+                        let py = 5 + radius * Math.sin(a); // Radiate upwards from the dish
+
+                        // Target heart ripple profile
+                        let hScale = 0.5 + waveT * 1.2;
+                        let hp = getHeartPoint(a, hScale);
+                        hp.y -= hScale * 2; 
+
+                        let x = lerpVal(px, hp.x, easeMorph);
+                        let y = lerpVal(py, hp.y, easeMorph);
+                        if (a === wStart) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                    }
+                    ctx.strokeStyle = c1.replace('ALPHA', alpha.toFixed(2));
+                    ctx.lineWidth = isLightMode ? 1.5 : (state === 'pulse' ? 2.5 : 2);
+                    ctx.stroke();
+                }
+            }
+
+            // 3. Draw Echoes (Returning Dots) for Busy State (Fades out in heartbeat)
+            if (state === 'busy' && !isOffline && easeMorph < 0.5) {
+                const echoPrng = new PRNG(456);
+                for (let i = 0; i < 5; i++) {
+                    let travelT = 1 - ((localTime * speed * 1.2 + echoPrng.next()) % 1); // Move inwards
+                    let angle = lerpVal(Math.PI * 1.3, Math.PI * 1.7, echoPrng.next()); // Fall within the top arc
+                    let dist = 15 + travelT * 20;
+
+                    let px = dist * Math.cos(angle);
+                    let py = 5 + dist * Math.sin(angle);
+
+                    ctx.beginPath();
+                    ctx.arc(px, py, 1.5 + echoPrng.next(), 0, Math.PI * 2);
+                    
+                    let fadeAlpha = Math.max(0, travelT * (1 - easeMorph * 2));
+                    ctx.fillStyle = c2.replace('ALPHA', fadeAlpha.toFixed(2));
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // --- Render Hardware: Hybrid (Compute + Radar) ---
+        function renderHybrid(ctx, w, h, scale, t, state = 'idle', morph = 0) {
+            let { localTime, pulseScale, pulseColorShift } = getAvatarTime(t, state, morph);
+            let { c1, c2, c3, isOffline } = getAvatarColors(state, pulseColorShift, morph);
+
+            ctx.save();
+            ctx.translate(w / 2, h / 2);
+            ctx.scale(scale * pulseScale * 1.1, scale * pulseScale * 1.1);
+            ctx.globalCompositeOperation = getBlendMode();
+
+            let easeMorph = -(Math.cos(Math.PI * morph) - 1) / 2;
+            let speed = (state === 'busy') ? 0.005 : 0.002;
+            if (isOffline) speed = 0;
+
+            // Central Compute Die
+            let dieSize = 8;
+            let dieRot = (state === 'busy') ? localTime * 0.005 : 0;
+            if (easeMorph > 0.1) dieRot = 0;
+
+            ctx.save();
+            ctx.rotate(dieRot);
+            ctx.beginPath();
+            for (let a = 0; a <= Math.PI * 2 + 0.1; a += Math.PI / 2) {
+                let px = Math.cos(a + Math.PI / 4) * dieSize * 1.414;
+                let py = Math.sin(a + Math.PI / 4) * dieSize * 1.414;
+                let unRotA = a - dieRot;
+                let hp = getHeartPoint(unRotA, 0.4); hp.y -= 2;
+                let x = lerpVal(px, hp.x, easeMorph);
+                let y = lerpVal(py, hp.y, easeMorph);
+                if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.strokeStyle = c3.replace('ALPHA', isOffline ? '0.3' : '0.9');
+            ctx.fillStyle = c1.replace('ALPHA', (state === 'busy' && !isOffline) ? (0.2 + Math.sin(localTime * 0.02) * 0.2).toFixed(2) : '0');
+            ctx.lineWidth = isLightMode ? 2 : 2.5;
+            if (!isLightMode && !isOffline) { ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 10; }
+            ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+            ctx.restore();
+
+            // Sensor Radar Ring around Compute
+            ctx.beginPath();
+            let ringR = 22;
+            for (let a = 0; a <= Math.PI * 2 + 0.1; a += 0.1) {
+                let px = Math.cos(a) * ringR; let py = Math.sin(a) * ringR;
+                let hp = getHeartPoint(a, 1.4); hp.y -= 6;
+                let x = lerpVal(px, hp.x, easeMorph);
+                let y = lerpVal(py, hp.y, easeMorph);
+                if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = c2.replace('ALPHA', isOffline ? '0.1' : '0.3');
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Data Buses & Incoming Signals
+            let lines = 8;
+            for (let i = 0; i < lines; i++) {
+                let a = i * (Math.PI * 2 / lines);
+                let startR = 12;
+                let midR = 22; // aligns with ring
+                let endR = 32;
+
+                let px1 = Math.cos(a) * startR, py1 = Math.sin(a) * startR;
+                let bendA = a - Math.PI / 8; // Bend opposite to compute unit
+                let px2 = Math.cos(bendA) * midR, py2 = Math.sin(bendA) * midR;
+                let px3 = Math.cos(bendA) * endR, py3 = Math.sin(bendA) * endR;
+
+                let hp1 = getHeartPoint(a, 0.8); hp1.y -= 4;
+                let hp2 = getHeartPoint(a, 1.4); hp2.y -= 6;
+                let hp3 = getHeartPoint(a, 1.8); hp3.y -= 8;
+
+                let x1 = lerpVal(px1, hp1.x, easeMorph); let y1 = lerpVal(py1, hp1.y, easeMorph);
+                let x2 = lerpVal(px2, hp2.x, easeMorph); let y2 = lerpVal(py2, hp2.y, easeMorph);
+                let x3 = lerpVal(px3, hp3.x, easeMorph); let y3 = lerpVal(py3, hp3.y, easeMorph);
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3);
+
+                let alpha = isOffline ? 0.2 : 0.4;
+                let col = (i % 2 === 0 ? c1 : c3).replace('ALPHA', alpha.toFixed(2));
+                ctx.strokeStyle = col;
+                ctx.lineWidth = isLightMode ? 1.5 : 2;
+                ctx.stroke();
+
+                // Incoming signals
+                if (!isOffline) {
+                    let p = 1 - ((localTime * speed + i * 0.125) % 1);
+                    let sx, sy;
+                    if (p > 0.5) {
+                        let np = (p - 0.5) * 2;
+                        sx = lerpVal(x2, x3, np); sy = lerpVal(y2, y3, np);
+                    } else {
+                        let np = p * 2;
+                        sx = lerpVal(x1, x2, np); sy = lerpVal(y1, y2, np);
+                    }
+
+                    let pingAlpha = Math.sin(p * Math.PI);
+                    ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+                    ctx.fillStyle = c2.replace('ALPHA', pingAlpha.toFixed(2));
+                    if (!isLightMode) { ctx.shadowColor = c2.replace('ALPHA', '1'); ctx.shadowBlur = 8; }
+                    ctx.fill(); ctx.shadowBlur = 0;
+                }
+            }
+
+            // Radar Sweep for Hybrid
+            if (!isOffline && easeMorph < 0.5) {
+                let angle = localTime * speed * 2;
+                for (let j = 0; j < 20; j++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    let a1 = angle + (j / 20) * (Math.PI / 6);
+                    let a2 = angle + ((j + 1) / 20) * (Math.PI / 6);
+                    ctx.arc(0, 0, ringR, a1, a2);
+                    ctx.lineTo(0, 0);
+                    let sweepAlpha = 0.4 * (1 - j / 20);
+                    ctx.fillStyle = c1.replace('ALPHA', sweepAlpha.toFixed(2));
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // --- Shared Network Node Generator ---
+        function createNetworkNodes(prng, colors) {
+            let numNodes = 6 + Math.floor(prng.next() * 4);
+            let nodes = [];
+            let cols = [colors.c1, colors.c2, colors.c3];
+            for (let i = 0; i < numNodes; i++) {
+                nodes.push({
+                    x: 20 + prng.next() * 130, y: -70 + prng.next() * 140, s: 1.5 + prng.next() * 2,
+                    col: cols[Math.floor(prng.next() * cols.length)], linkTo: [], connectToOrigin: false
+                });
+            }
+            let numOriginLinks = 2 + Math.floor(prng.next() * 5);
+            let indices = Array.from({ length: numNodes }, (_, i) => i);
+            for (let i = 0; i < indices.length; i++) {
+                let swapIdx = Math.floor(prng.next() * indices.length);
+                let temp = indices[i]; indices[i] = indices[swapIdx]; indices[swapIdx] = temp;
+            }
+            for (let i = 0; i < numOriginLinks; i++) if (indices[i] !== undefined) nodes[indices[i]].connectToOrigin = true;
+            for (let i = 0; i < numNodes; i++) {
+                let links = Math.floor(prng.next() * 3);
+                for (let l = 0; l < links; l++) {
+                    let target = i + 1 + Math.floor(prng.next() * (numNodes - i - 1));
+                    if (target < numNodes && !nodes[i].linkTo.includes(target)) nodes[i].linkTo.push(target);
+                }
+            }
+            return nodes;
+        }
+
+        const drawNetworkNodes = (ctx, t, prngSeed, netOriginX, netOriginY, flipX, netEnergy, activeColors) => {
+            const prng = new PRNG(prngSeed);
+            const nodes = createNetworkNodes(prng, activeColors);
+            ctx.lineWidth = 0.5 + netEnergy;
+
+            nodes.forEach((n, i) => {
+                let nx = flipX ? -n.x : n.x;
+                if (n.connectToOrigin) {
+                    ctx.beginPath(); ctx.moveTo(netOriginX, netOriginY);
+                    let cpX = netOriginX + nx * 0.5 + Math.sin(t * 0.001 + i) * 10;
+                    let cpY = netOriginY + n.y * 0.5 + Math.cos(t * 0.001 + i) * 10;
+                    ctx.quadraticCurveTo(cpX, cpY, netOriginX + nx, netOriginY + n.y);
+                    ctx.strokeStyle = `rgba(${n.col.r}, ${n.col.g}, ${n.col.b}, ${isLightMode ? 0.6 : 0.3 + netEnergy * 0.5})`;
+                    ctx.stroke();
+                }
+                n.linkTo.forEach(targetIdx => {
+                    let target = nodes[targetIdx]; let tnx = flipX ? -target.x : target.x;
+                    ctx.beginPath(); ctx.moveTo(netOriginX + nx, netOriginY + n.y); ctx.lineTo(netOriginX + tnx, netOriginY + target.y);
+                    let alphaVal = isLightMode ? 0.3 + netEnergy * 0.3 : 0.1 + netEnergy * 0.2;
+                    ctx.strokeStyle = `rgba(${isLightMode ? '50,50,100' : '100,100,200'}, ${alphaVal})`; ctx.stroke();
+                });
+            });
+
+            ctx.globalCompositeOperation = 'source-over';
+            nodes.forEach(n => {
+                let nx = flipX ? -n.x : n.x;
+                ctx.beginPath(); ctx.arc(netOriginX + nx, netOriginY + n.y, n.s + netEnergy, 0, Math.PI * 2);
+                ctx.fillStyle = `rgb(${n.col.r}, ${n.col.g}, ${n.col.b})`;
+                if (!isLightMode) { ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 5 + netEnergy * 15; }
+                ctx.fill(); ctx.shadowBlur = 0;
+            });
+
+            ctx.save();
+            ctx.translate(netOriginX, netOriginY);
+            let spinDir = flipX ? -1 : 1;
+            ctx.rotate(Math.PI / 4 + t * 0.0005 * spinDir);
+            let coreSize = 6 + netEnergy * 4;
+            ctx.fillStyle = '#E879F9';
+            if (!isLightMode) { ctx.shadowColor = '#E879F9'; ctx.shadowBlur = 15 + netEnergy * 25; }
+            ctx.fillRect(-coreSize / 2, -coreSize / 2, coreSize, coreSize); ctx.shadowBlur = 0;
+            ctx.restore();
+            ctx.globalCompositeOperation = getBlendMode();
+        };
+
+        // --- Render Bottom Sections ---
+        function renderBottomSectionV1(ctx, w, h, t) {
+            const prng = new PRNG(777);
+            ctx.globalCompositeOperation = getBlendMode();
+            const ribbonPoints = 100, strands = 25;
+            for (let s = 0; s < strands; s++) {
+                ctx.beginPath();
+                let alpha = (isLightMode ? 0.08 : 0.04) + prng.next() * 0.05;
+                let yOffsetBase = (prng.next() - 0.5) * 40;
+                let phaseOff = prng.next() * Math.PI * 2, freqOff = 0.8 + prng.next() * 0.4;
+                for (let i = 0; i <= ribbonPoints; i++) {
+                    let pct = i / ribbonPoints, x = pct * w * 0.8;
+                    let timeFactor = t * 0.001;
+                    let yWave = Math.sin(pct * Math.PI * 3 * freqOff + timeFactor + phaseOff) * 30 + Math.sin(pct * Math.PI * 5 - timeFactor * 0.5) * 15;
+                    let taper = Math.sin(pct * Math.PI);
+                    let y = h / 2 + yWave * taper + yOffsetBase * taper;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                const grad = ctx.createLinearGradient(0, 0, w * 0.8, 0);
+                grad.addColorStop(0, `rgba(${activeColors.c1.r}, ${activeColors.c1.g}, ${activeColors.c1.b}, ${alpha})`);
+                grad.addColorStop(0.5, `rgba(${activeColors.c2.r}, ${activeColors.c2.g}, ${activeColors.c2.b}, ${alpha})`);
+                grad.addColorStop(1, `rgba(${activeColors.c3.r}, ${activeColors.c3.g}, ${activeColors.c3.b}, ${alpha})`);
+                ctx.strokeStyle = grad; ctx.lineWidth = isLightMode ? 1 : 2; ctx.stroke();
+            }
+            const netOriginX = w * 0.78, netOriginY = h / 2;
+            drawNetworkNodes(ctx, t, 111, netOriginX, netOriginY, false, 0, activeColors);
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        function renderBottomSectionV4(ctx, w, h, t) {
+            const prng = new PRNG(888);
+            ctx.globalCompositeOperation = getBlendMode();
+            let safeT = Math.max(0, t);
+            let c1 = `rgba(${activeColors.c1.r}, ${activeColors.c1.g}, ${activeColors.c1.b}, ALPHA)`;
+            let c2 = `rgba(${activeColors.c2.r}, ${activeColors.c2.g}, ${activeColors.c2.b}, ALPHA)`;
+            let c3 = `rgba(${activeColors.c3.r}, ${activeColors.c3.g}, ${activeColors.c3.b}, ALPHA)`;
+
+            let cycleDuration = 6000;
+            let progress = (safeT % cycleDuration) / cycleDuration;
+            let startX = 40, endX = w - 40;
+            let drift1 = Math.sin(safeT * 0.0012) * 80, drift2 = Math.cos(safeT * 0.0015) * 60;
+            let p0 = { x: startX, y: h / 2 }, p1 = { x: w * 0.35, y: h / 2 - 80 + drift1 }, p2 = { x: w * 0.65, y: h / 2 + 80 + drift2 }, p3 = { x: endX, y: h / 2 };
+
+            ctx.save(); ctx.globalAlpha = 0.15;
+            drawEtherealBundle(ctx, prng, {
+                startX: p0.x, startY: p0.y, cp1x: p1.x, cp1y: p1.y, cp2x: p2.x, cp2y: p2.y, endX: p3.x, endY: p3.y,
+                count: 2, spread: 15, color1: c1, color2: c3, timeOffset: 0, widthMultiplier: 0.5, progress: 1
+            });
+            ctx.restore();
+
+            drawEtherealBundle(ctx, prng, {
+                startX: p0.x, startY: p0.y, cp1x: p1.x, cp1y: p1.y, cp2x: p2.x, cp2y: p2.y, endX: p3.x, endY: p3.y,
+                count: 4, spread: 45, color1: c1, color2: c3, timeOffset: safeT * 0.0005, widthMultiplier: 0.8, progress: progress
+            });
+            drawEtherealBundle(ctx, prng, {
+                startX: p0.x, startY: p0.y, cp1x: p1.x, cp1y: p1.y + 20, cp2x: p2.x, cp2y: p2.y - 20, endX: p3.x, endY: p3.y,
+                count: 3, spread: 35, color1: c2, color2: c1, timeOffset: safeT * 0.0007 + 100, widthMultiplier: 0.8, progress: progress
+            });
+
+            ctx.globalCompositeOperation = 'source-over';
+            for (let i = 0; i < 40; i++) {
+                let sparkP = prng.next();
+                if (sparkP > progress || progress < 0.02) continue;
+                let sparkPt = getBezierPoint(sparkP, p0, p1, p2, p3);
+                let driftX = Math.sin(safeT * 0.001 + i) * 15;
+                let driftY = Math.cos(safeT * 0.0015 + i) * 15 - ((safeT * 0.01 + i * 10) % 25);
+                ctx.beginPath(); ctx.arc(sparkPt.x + driftX, sparkPt.y + driftY, prng.next() * 1.5 + 0.5, 0, Math.PI * 2);
+                let colObj = prng.next() > 0.5 ? activeColors.c1 : activeColors.c3;
+                let alpha = (0.2 + prng.next() * 0.6) * Math.sin(sparkP * Math.PI);
+                ctx.fillStyle = `rgba(${colObj.r}, ${colObj.g}, ${colObj.b}, ${alpha})`; ctx.fill();
+            }
+
+            if (progress > 0.01 && progress < 0.99) {
+                let headPt = getBezierPoint(progress, p0, p1, p2, p3);
+                ctx.beginPath(); ctx.arc(headPt.x, headPt.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = getSparkColor();
+                if (!isLightMode) { ctx.shadowColor = `rgb(${activeColors.c3.r}, ${activeColors.c3.g}, ${activeColors.c3.b})`; ctx.shadowBlur = 10; }
+                ctx.fill(); ctx.shadowBlur = 0;
+            }
+            ctx.beginPath(); ctx.arc(startX, h / 2, 6, 0, Math.PI * 2); ctx.fillStyle = `rgba(${activeColors.c1.r}, ${activeColors.c1.g}, ${activeColors.c1.b}, 0.8)`;
+            if (!isLightMode) { ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 15; }
+            ctx.fill();
+            ctx.beginPath(); ctx.arc(startX, h / 2, 2, 0, Math.PI * 2); ctx.fillStyle = getSparkColor(); ctx.fill(); ctx.shadowBlur = 0;
+        }
+
+        function renderBottomSectionV5(ctx, w, h, t) {
+            ctx.globalCompositeOperation = getBlendMode();
+            let safeT = Math.max(0, t);
+            const cycleDuration = 4000;
+            let rawProgress = (safeT % cycleDuration) / cycleDuration;
+            const progress = Math.max(0, Math.min(1, rawProgress));
+            const ribbonEndX = w * 0.75, centerY = h / 2;
+
+            let netEnergy = 0;
+            if (progress > 0.85) netEnergy = (progress - 0.85) * 6.66;
+            else if (progress < 0.15) netEnergy = 1 - (progress * 6.66);
+            netEnergy = Math.max(0, Math.min(1, netEnergy));
+
+            drawNetworkNodes(ctx, safeT, 555, ribbonEndX, centerY, false, netEnergy, activeColors);
+            ctx.globalCompositeOperation = getBlendMode();
+
+            const strands = 6;
+            for (let i = 0; i < strands; i++) {
+                ctx.beginPath();
+                let phase = i * (Math.PI / 3), speed = 0.0015 + (i * 0.0002);
+                for (let x = 0; x <= ribbonEndX; x += 4) {
+                    let pct = x / ribbonEndX;
+                    let envelope = Math.sin(pct * Math.PI);
+                    let wave1 = Math.sin(pct * 8 + safeT * speed + phase) * 25;
+                    let wave2 = Math.cos(pct * 5 - safeT * 0.001) * 15;
+                    let y = centerY + (wave1 + wave2) * envelope;
+                    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+
+                let grad = ctx.createLinearGradient(0, 0, ribbonEndX, 0);
+                let dimAlpha = isLightMode ? 0.12 : 0.08;
+                let cStr1 = `rgba(${activeColors.c1.r}, ${activeColors.c1.g}, ${activeColors.c1.b}, ${dimAlpha})`;
+                let cStr2 = `rgba(${activeColors.c3.r}, ${activeColors.c3.g}, ${activeColors.c3.b}, ${dimAlpha})`;
+                let brightAlpha = 0.8;
+                let hStr1 = `rgba(${activeColors.c1.r}, ${activeColors.c1.g}, ${activeColors.c1.b}, ${brightAlpha})`;
+                let hStr2 = `rgba(${activeColors.c3.r}, ${activeColors.c3.g}, ${activeColors.c3.b}, ${brightAlpha})`;
+
+                let pulseWidth = 0.15;
+                let startFade = Math.max(0, progress - pulseWidth);
+                let endFade = Math.min(1, progress + pulseWidth);
+
+                grad.addColorStop(0, cStr1);
+                if (startFade > 0 && startFade < progress) grad.addColorStop(startFade, cStr1);
+                grad.addColorStop(progress, i % 2 === 0 ? hStr1 : hStr2);
+                if (endFade < 1 && endFade > progress) grad.addColorStop(endFade, cStr2);
+                grad.addColorStop(1, cStr2);
+
+                ctx.strokeStyle = grad; ctx.lineWidth = isLightMode ? 1 : (1.5 + (i % 2)); ctx.stroke();
+            }
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        function renderBottomSectionV6(ctx, w, h, t) {
+            ctx.globalCompositeOperation = getBlendMode();
+            let safeT = Math.max(0, t);
+            const cycleDuration = 6000;
+            let rawProgress = (safeT % cycleDuration) / (cycleDuration / 2);
+            let isReversed = rawProgress >= 1;
+            let progress = isReversed ? 2 - rawProgress : rawProgress;
+            progress = Math.max(0, Math.min(1, progress));
+
+            const startX = w * 0.25, endX = w * 0.75, width = endX - startX, centerY = h / 2;
+
+            let netEnergyRight = 0, netEnergyLeft = 0;
+            if (progress > 0.85) netEnergyRight = (progress - 0.85) * 6.66;
+            if (progress < 0.15) netEnergyLeft = (0.15 - progress) * 6.66;
+
+            drawNetworkNodes(ctx, safeT, 661, startX, centerY, true, Math.max(0, Math.min(1, netEnergyLeft)), activeColors);
+            drawNetworkNodes(ctx, safeT, 662, endX, centerY, false, Math.max(0, Math.min(1, netEnergyRight)), activeColors);
+            ctx.globalCompositeOperation = getBlendMode();
+
+            const strands = 6;
+            for (let i = 0; i < strands; i++) {
+                ctx.beginPath();
+                let phase = i * (Math.PI / 3), speed = 0.0015 + (i * 0.0002);
+                for (let x = startX; x <= endX; x += 4) {
+                    let pct = (x - startX) / width;
+                    let envelope = Math.sin(pct * Math.PI);
+                    let wave1 = Math.sin(pct * 8 + safeT * speed + phase) * 25;
+                    let wave2 = Math.cos(pct * 5 - safeT * 0.001) * 15;
+                    let y = centerY + (wave1 + wave2) * envelope;
+                    if (x === startX) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+
+                let grad = ctx.createLinearGradient(startX, 0, endX, 0);
+                let dimAlpha = isLightMode ? 0.12 : 0.08;
+                let cStr1 = `rgba(${activeColors.c1.r}, ${activeColors.c1.g}, ${activeColors.c1.b}, ${dimAlpha})`;
+                let cStr2 = `rgba(${activeColors.c3.r}, ${activeColors.c3.g}, ${activeColors.c3.b}, ${dimAlpha})`;
+                let brightAlpha = 0.8;
+                let hStr1 = `rgba(${activeColors.c1.r}, ${activeColors.c1.g}, ${activeColors.c1.b}, ${brightAlpha})`;
+                let hStr2 = `rgba(${activeColors.c3.r}, ${activeColors.c3.g}, ${activeColors.c3.b}, ${brightAlpha})`;
+
+                let pulseWidth = 0.15;
+                let startFade = Math.max(0, progress - pulseWidth);
+                let endFade = Math.min(1, progress + pulseWidth);
+
+                grad.addColorStop(0, cStr1);
+                if (startFade > 0 && startFade < progress) grad.addColorStop(startFade, cStr1);
+                grad.addColorStop(progress, i % 2 === 0 ? hStr1 : hStr2);
+                if (endFade < 1 && endFade > progress) grad.addColorStop(endFade, cStr2);
+                grad.addColorStop(1, cStr2);
+
+                ctx.strokeStyle = grad; ctx.lineWidth = isLightMode ? 1 : (1.5 + (i % 2)); ctx.stroke();
+            }
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        function renderBottomSectionV7(ctx, w, h, t) {
+            const prng = new PRNG(777);
+            ctx.globalCompositeOperation = getBlendMode();
+            const ribbonPoints = 100, strands = 25;
+            const startX = w * 0.22, endX = w * 0.78, width = endX - startX;
+
+            for (let s = 0; s < strands; s++) {
+                ctx.beginPath();
+                let alpha = (isLightMode ? 0.08 : 0.04) + prng.next() * 0.05;
+                let yOffsetBase = (prng.next() - 0.5) * 40;
+                let phaseOff = prng.next() * Math.PI * 2, freqOff = 0.8 + prng.next() * 0.4;
+                for (let i = 0; i <= ribbonPoints; i++) {
+                    let pct = i / ribbonPoints;
+                    let x = startX + (pct * width);
+                    let timeFactor = t * 0.001;
+                    let yWave = Math.sin(pct * Math.PI * 3 * freqOff + timeFactor + phaseOff) * 30 + Math.sin(pct * Math.PI * 5 - timeFactor * 0.5) * 15;
+                    let taper = Math.sin(pct * Math.PI);
+                    let y = h / 2 + yWave * taper + yOffsetBase * taper;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                const grad = ctx.createLinearGradient(startX, 0, endX, 0);
+                grad.addColorStop(0, `rgba(${activeColors.c1.r}, ${activeColors.c1.g}, ${activeColors.c1.b}, ${alpha})`);
+                grad.addColorStop(0.5, `rgba(${activeColors.c2.r}, ${activeColors.c2.g}, ${activeColors.c2.b}, ${alpha})`);
+                grad.addColorStop(1, `rgba(${activeColors.c3.r}, ${activeColors.c3.g}, ${activeColors.c3.b}, ${alpha})`);
+                ctx.strokeStyle = grad; ctx.lineWidth = isLightMode ? 1 : 2; ctx.stroke();
+            }
+
+            drawNetworkNodes(ctx, t, 771, startX, h / 2, true, 0, activeColors);
+            drawNetworkNodes(ctx, t, 772, endX, h / 2, false, 0, activeColors);
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // Object containing all our canvases mapped to their IDs
+        const canvases = {
+            main: setupCanvas('canvas-main', 400, 350),
+            animIdle: setupCanvas('canvas-anim-idle', 80, 80),
+            animBusy: setupCanvas('canvas-anim-busy', 80, 80),
+            animPulse: setupCanvas('canvas-anim-pulse', 80, 80),
+            animHeartbeat: setupCanvas('canvas-anim-heartbeat', 80, 80),
+            animOffline: setupCanvas('canvas-anim-offline', 80, 80),
+
+            humanIdle: setupCanvas('canvas-human-idle', 80, 80),
+            humanBusy: setupCanvas('canvas-human-busy', 80, 80),
+            humanPulse: setupCanvas('canvas-human-pulse', 80, 80),
+            humanHeartbeat: setupCanvas('canvas-human-heartbeat', 80, 80),
+            humanOffline: setupCanvas('canvas-human-offline', 80, 80),
+
+            gearIdle: setupCanvas('canvas-gear-idle', 80, 80),
+            gearBusy: setupCanvas('canvas-gear-busy', 80, 80),
+            gearPulse: setupCanvas('canvas-gear-pulse', 80, 80),
+            gearHeartbeat: setupCanvas('canvas-gear-heartbeat', 80, 80),
+            gearOffline: setupCanvas('canvas-gear-offline', 80, 80),
+
+            astroIdle: setupCanvas('canvas-astro-idle', 80, 80),
+            astroBusy: setupCanvas('canvas-astro-busy', 80, 80),
+            astroPulse: setupCanvas('canvas-astro-pulse', 80, 80),
+            astroHeartbeat: setupCanvas('canvas-astro-heartbeat', 80, 80),
+            astroOffline: setupCanvas('canvas-astro-offline', 80, 80),
+
+            compIdle: setupCanvas('canvas-comp-idle', 80, 80),
+            compBusy: setupCanvas('canvas-comp-busy', 80, 80),
+            compPulse: setupCanvas('canvas-comp-pulse', 80, 80),
+            compHeartbeat: setupCanvas('canvas-comp-heartbeat', 80, 80),
+            compOffline: setupCanvas('canvas-comp-offline', 80, 80),
+
+            sensIdle: setupCanvas('canvas-sens-idle', 80, 80),
+            sensBusy: setupCanvas('canvas-sens-busy', 80, 80),
+            sensPulse: setupCanvas('canvas-sens-pulse', 80, 80),
+            sensHeartbeat: setupCanvas('canvas-sens-heartbeat', 80, 80),
+            sensOffline: setupCanvas('canvas-sens-offline', 80, 80),
+
+            sonarIdle: setupCanvas('canvas-sonar-idle', 80, 80),
+            sonarBusy: setupCanvas('canvas-sonar-busy', 80, 80),
+            sonarPulse: setupCanvas('canvas-sonar-pulse', 80, 80),
+            sonarHeartbeat: setupCanvas('canvas-sonar-heartbeat', 80, 80),
+            sonarOffline: setupCanvas('canvas-sonar-offline', 80, 80),
+
+            hybIdle: setupCanvas('canvas-hyb-idle', 80, 80),
+            hybBusy: setupCanvas('canvas-hyb-busy', 80, 80),
+            hybPulse: setupCanvas('canvas-hyb-pulse', 80, 80),
+            hybHeartbeat: setupCanvas('canvas-hyb-heartbeat', 80, 80),
+            hybOffline: setupCanvas('canvas-hyb-offline', 80, 80),
+
+            v1: setupCanvas('canvas-bottom-v1', 860, 200),
+            v4: setupCanvas('canvas-bottom-v4', 860, 200),
+            v5: setupCanvas('canvas-bottom-v5', 860, 200),
+            v6: setupCanvas('canvas-bottom-v6', 860, 200),
+            v7: setupCanvas('canvas-bottom-v7', 860, 200)
+        };
+
+        let lastFrameTime = performance.now();
+        function animate(now) {
+            requestAnimationFrame(animate);
+            let delta = now - lastFrameTime;
+
+            if (delta > 0 && !isPaused) {
+                globalTime += delta;
+            }
+            lastFrameTime = now;
+
+            let safeTime = Math.max(0, globalTime);
+
+            // --- AI Agent States ---
+            canvases.main.ctx.clearRect(0, 0, canvases.main.width, canvases.main.height);
+            renderVelvetV(canvases.main.ctx, canvases.main.width, canvases.main.height, 1.2, globalTime, 'active');
+
+            canvases.animIdle.ctx.clearRect(0, 0, canvases.animIdle.width, canvases.animIdle.height);
+            renderVelvetV(canvases.animIdle.ctx, canvases.animIdle.width, canvases.animIdle.height, 0.4, globalTime, 'idle');
+
+            canvases.animBusy.ctx.clearRect(0, 0, canvases.animBusy.width, canvases.animBusy.height);
+            renderBusy(canvases.animBusy.ctx, canvases.animBusy.width, canvases.animBusy.height, 0.4, globalTime);
+
+            canvases.animPulse.ctx.clearRect(0, 0, canvases.animPulse.width, canvases.animPulse.height);
+            renderVelvetV(canvases.animPulse.ctx, canvases.animPulse.width, canvases.animPulse.height, 0.4, globalTime, 'pulse');
+
+            canvases.animOffline.ctx.clearRect(0, 0, canvases.animOffline.width, canvases.animOffline.height);
+            renderVelvetV(canvases.animOffline.ctx, canvases.animOffline.width, canvases.animOffline.height, 0.4, globalTime, 'offline');
+
+            // Shared Morph Phase for Heartbeats
+            let heartPhase = safeTime % 6000;
+            let currentMorph = 0;
+            if (heartPhase > 1500 && heartPhase <= 2500) currentMorph = (heartPhase - 1500) / 1000;
+            else if (heartPhase > 2500 && heartPhase <= 4500) currentMorph = 1;
+            else if (heartPhase > 4500 && heartPhase <= 5500) currentMorph = 1 - (heartPhase - 4500) / 1000;
+
+            canvases.animHeartbeat.ctx.clearRect(0, 0, canvases.animHeartbeat.width, canvases.animHeartbeat.height);
+            renderVelvetV(canvases.animHeartbeat.ctx, canvases.animHeartbeat.width, canvases.animHeartbeat.height, 0.4, globalTime, 'heartbeat', currentMorph);
+
+            // --- Human: Clean UI Profile ---
+            canvases.humanIdle.ctx.clearRect(0, 0, 80, 80); renderHumanClean(canvases.humanIdle.ctx, 80, 80, 0.5, globalTime, 'idle');
+            canvases.humanBusy.ctx.clearRect(0, 0, 80, 80); renderHumanClean(canvases.humanBusy.ctx, 80, 80, 0.5, globalTime, 'busy');
+            canvases.humanPulse.ctx.clearRect(0, 0, 80, 80); renderHumanClean(canvases.humanPulse.ctx, 80, 80, 0.5, globalTime, 'pulse');
+            canvases.humanHeartbeat.ctx.clearRect(0, 0, 80, 80); renderHumanClean(canvases.humanHeartbeat.ctx, 80, 80, 0.5, globalTime, 'heartbeat', currentMorph);
+            canvases.humanOffline.ctx.clearRect(0, 0, 80, 80); renderHumanClean(canvases.humanOffline.ctx, 80, 80, 0.5, globalTime, 'offline');
+
+            // --- Robot: Gears ---
+            canvases.gearIdle.ctx.clearRect(0, 0, 80, 80); renderRobotGears(canvases.gearIdle.ctx, 80, 80, 0.5, globalTime, 'idle');
+            canvases.gearBusy.ctx.clearRect(0, 0, 80, 80); renderRobotGears(canvases.gearBusy.ctx, 80, 80, 0.5, globalTime, 'busy');
+            canvases.gearPulse.ctx.clearRect(0, 0, 80, 80); renderRobotGears(canvases.gearPulse.ctx, 80, 80, 0.5, globalTime, 'pulse');
+            canvases.gearHeartbeat.ctx.clearRect(0, 0, 80, 80); renderRobotGears(canvases.gearHeartbeat.ctx, 80, 80, 0.5, globalTime, 'heartbeat', currentMorph);
+            canvases.gearOffline.ctx.clearRect(0, 0, 80, 80); renderRobotGears(canvases.gearOffline.ctx, 80, 80, 0.5, globalTime, 'offline');
+
+            // --- Astrolabe (Navigation/Systems) ---
+            canvases.astroIdle.ctx.clearRect(0, 0, 80, 80); renderAstrolabe(canvases.astroIdle.ctx, 80, 80, 0.5, globalTime, 'idle');
+            canvases.astroBusy.ctx.clearRect(0, 0, 80, 80); renderAstrolabe(canvases.astroBusy.ctx, 80, 80, 0.5, globalTime, 'busy');
+            canvases.astroPulse.ctx.clearRect(0, 0, 80, 80); renderAstrolabe(canvases.astroPulse.ctx, 80, 80, 0.5, globalTime, 'pulse');
+            canvases.astroHeartbeat.ctx.clearRect(0, 0, 80, 80); renderAstrolabe(canvases.astroHeartbeat.ctx, 80, 80, 0.5, globalTime, 'heartbeat', currentMorph);
+            canvases.astroOffline.ctx.clearRect(0, 0, 80, 80); renderAstrolabe(canvases.astroOffline.ctx, 80, 80, 0.5, globalTime, 'offline');
+
+            // --- Hardware: Computer ---
+            canvases.compIdle.ctx.clearRect(0, 0, 80, 80); renderComputer(canvases.compIdle.ctx, 80, 80, 0.5, globalTime, 'idle');
+            canvases.compBusy.ctx.clearRect(0, 0, 80, 80); renderComputer(canvases.compBusy.ctx, 80, 80, 0.5, globalTime, 'busy');
+            canvases.compPulse.ctx.clearRect(0, 0, 80, 80); renderComputer(canvases.compPulse.ctx, 80, 80, 0.5, globalTime, 'pulse');
+            canvases.compHeartbeat.ctx.clearRect(0, 0, 80, 80); renderComputer(canvases.compHeartbeat.ctx, 80, 80, 0.5, globalTime, 'heartbeat', currentMorph);
+            canvases.compOffline.ctx.clearRect(0, 0, 80, 80); renderComputer(canvases.compOffline.ctx, 80, 80, 0.5, globalTime, 'offline');
+
+            // --- Hardware: Sensor ---
+            canvases.sensIdle.ctx.clearRect(0, 0, 80, 80); renderSensorRadar(canvases.sensIdle.ctx, 80, 80, 0.5, globalTime, 'idle');
+            canvases.sensBusy.ctx.clearRect(0, 0, 80, 80); renderSensorRadar(canvases.sensBusy.ctx, 80, 80, 0.5, globalTime, 'busy');
+            canvases.sensPulse.ctx.clearRect(0, 0, 80, 80); renderSensorRadar(canvases.sensPulse.ctx, 80, 80, 0.5, globalTime, 'pulse');
+            canvases.sensHeartbeat.ctx.clearRect(0, 0, 80, 80); renderSensorRadar(canvases.sensHeartbeat.ctx, 80, 80, 0.5, globalTime, 'heartbeat', currentMorph);
+            canvases.sensOffline.ctx.clearRect(0, 0, 80, 80); renderSensorRadar(canvases.sensOffline.ctx, 80, 80, 0.5, globalTime, 'offline');
+
+            canvases.sonarIdle.ctx.clearRect(0, 0, 80, 80); renderSensorSonar(canvases.sonarIdle.ctx, 80, 80, 0.5, globalTime, 'idle');
+            canvases.sonarBusy.ctx.clearRect(0, 0, 80, 80); renderSensorSonar(canvases.sonarBusy.ctx, 80, 80, 0.5, globalTime, 'busy');
+            canvases.sonarPulse.ctx.clearRect(0, 0, 80, 80); renderSensorSonar(canvases.sonarPulse.ctx, 80, 80, 0.5, globalTime, 'pulse');
+            canvases.sonarHeartbeat.ctx.clearRect(0, 0, 80, 80); renderSensorSonar(canvases.sonarHeartbeat.ctx, 80, 80, 0.5, globalTime, 'heartbeat', currentMorph);
+            canvases.sonarOffline.ctx.clearRect(0, 0, 80, 80); renderSensorSonar(canvases.sonarOffline.ctx, 80, 80, 0.5, globalTime, 'offline');
+
+            // --- Hardware: Hybrid ---
+            canvases.hybIdle.ctx.clearRect(0, 0, 80, 80); renderHybrid(canvases.hybIdle.ctx, 80, 80, 0.5, globalTime, 'idle');
+            canvases.hybBusy.ctx.clearRect(0, 0, 80, 80); renderHybrid(canvases.hybBusy.ctx, 80, 80, 0.5, globalTime, 'busy');
+            canvases.hybPulse.ctx.clearRect(0, 0, 80, 80); renderHybrid(canvases.hybPulse.ctx, 80, 80, 0.5, globalTime, 'pulse');
+            canvases.hybHeartbeat.ctx.clearRect(0, 0, 80, 80); renderHybrid(canvases.hybHeartbeat.ctx, 80, 80, 0.5, globalTime, 'heartbeat', currentMorph);
+            canvases.hybOffline.ctx.clearRect(0, 0, 80, 80); renderHybrid(canvases.hybOffline.ctx, 80, 80, 0.5, globalTime, 'offline');
+
+            // --- Render Historical Bottom Iterations ---
+            canvases.v1.ctx.clearRect(0, 0, canvases.v1.width, canvases.v1.height);
+            renderBottomSectionV1(canvases.v1.ctx, canvases.v1.width, canvases.v1.height, globalTime);
+
+            canvases.v4.ctx.clearRect(0, 0, canvases.v4.width, canvases.v4.height);
+            renderBottomSectionV4(canvases.v4.ctx, canvases.v4.width, canvases.v4.height, globalTime);
+
+            canvases.v5.ctx.clearRect(0, 0, canvases.v5.width, canvases.v5.height);
+            renderBottomSectionV5(canvases.v5.ctx, canvases.v5.width, canvases.v5.height, globalTime);
+
+            canvases.v6.ctx.clearRect(0, 0, canvases.v6.width, canvases.v6.height);
+            renderBottomSectionV6(canvases.v6.ctx, canvases.v6.width, canvases.v6.height, globalTime);
+
+            canvases.v7.ctx.clearRect(0, 0, canvases.v7.width, canvases.v7.height);
+            renderBottomSectionV7(canvases.v7.ctx, canvases.v7.width, canvases.v7.height, globalTime);
+        }
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>
