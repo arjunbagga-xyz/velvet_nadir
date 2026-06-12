@@ -11,6 +11,7 @@ __all__ = [
     "LLMAdapterError",
     "MemoryAdapterError",
     "FabricError",
+    "TrustGateError",
 ]
 
 
@@ -36,4 +37,9 @@ class MemoryAdapterError(VelvetAdapterError):
 
 class FabricError(VelvetAdapterError):
     """Raised when the communication fabric encounters an error."""
+    pass
+
+
+class TrustGateError(VelvetError):
+    """Raised when a trust level change bypasses the TrustGate or fails biometric validation."""
     pass

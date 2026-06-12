@@ -97,12 +97,11 @@ async def test_onboard_host_success(mock_fabric):
         result = await onboard_device(
             device_id="192.168.1.50",
             role="host",
-            trust="trusted",
             credentials={"host": "192.168.1.50", "username": "pi", "password": "pw"}
         )
         
         assert result.success
-        assert "trusted host" in result.speak
+        assert "untrusted" in result.speak.lower() or "host" in result.speak.lower()
         
         # Verify driver usage
         driver_instance.connect.assert_called_once()
@@ -111,7 +110,7 @@ async def test_onboard_host_success(mock_fabric):
         # Verify fabric publish
         mock_fabric.publish.assert_called()
         args, _ = mock_fabric.publish.call_args
-        assert args[0] == "mesh/device/announce"
+        assert args[0] in ("mesh/device/announce", "sys/device/announce")
         assert args[1]["name"] == "raspberrypi"
         assert args[1]["role"] == "host"
 

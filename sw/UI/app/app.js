@@ -1,7 +1,7 @@
 // ── App.js — Main Application Logic ────────────────────────
 import {
-  INITIAL_DEVICES, INITIAL_CONTEXTS, INITIAL_EVENTS
-} from './data.js';
+  state, connectBridge, subscribe, createWorkspace, deleteWorkspace, searchJing, isConnected
+} from './ws-bridge.js';
 import {
   renderSilkPulseConnection, renderSilkPulseRadial, renderDormantSineConnection,
   renderOrganicStreamV4, drawNetworkNodes,
@@ -45,9 +45,92 @@ function getDeviceIcon(name) {
 let currentView = 'mesh';
 let selectedContext = null;
 let selectedDevice = null;
-let events = [...INITIAL_EVENTS];
-let devices = INITIAL_DEVICES.map(d => ({ ...d }));
-const contexts = [...INITIAL_CONTEXTS];
+// Use local references to state, updated by bridge
+let devices = state.devices;
+let contexts = state.contexts;
+let events = state.events;
+
+// ── Bridge Integration ─────────────────────────────────────
+subscribe('devices', (newData) => {
+  devices = newData;
+  applyLogarithmicLayout(devices);
+  renderMesh();
+});
+
+subscribe('contexts', (newData) => {
+  contexts = newData;
+  renderMesh();
+});
+
+subscribe('events', (newData) => {
+  events = newData;
+  if (currentView === 'logs') renderLogs();
+});
+
+connectBridge();
+
+// ── Logarithmic Spatial Compression ────────────────────────
+/**
+ * Translates lat/lon into xy coordinates with logarithmic scaling,
+ * preserving direction but compressing far distances so the mesh fits.
+ */
+function applyLogarithmicLayout(deviceList) {
+  if (deviceList.length === 0) return;
+  
+  // Use the first device (or gateway) as anchor (0,0) center of screen 
+  const anchor = deviceList[0];
+  if (!anchor.location) return;
+  
+  const [aLat, aLon] = anchor.location;
+  const cx = 600; // Center X of mesh
+  const cy = 400; // Center Y of mesh
+  
+  anchor.x = cx;
+  anchor.y = cy;
+
+  // Haversine distance in meters
+  function calcDist(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const rLa1 = lat1 * Math.PI/180;
+      const rLa2 = lat2 * Math.PI/180;
+      const dLa = (lat2-lat1) * Math.PI/180;
+      const dLo = (lon2-lon1) * Math.PI/180;
+      const a = Math.sin(dLa/2)*Math.sin(dLa/2) + Math.cos(rLa1)*Math.cos(rLa2)*Math.sin(dLo/2)*Math.sin(dLo/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  // Bearing in radians
+  function calcBearing(lat1, lon1, lat2, lon2) {
+      const y = Math.sin((lon2-lon1)*Math.PI/180) * Math.cos(lat2*Math.PI/180);
+      const x = Math.cos(lat1*Math.PI/180)*Math.sin(lat2*Math.PI/180) - Math.sin(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.cos((lon2-lon1)*Math.PI/180);
+      return Math.atan2(y, x);
+  }
+
+  for (let i = 1; i < deviceList.length; i++) {
+    const d = deviceList[i];
+    // If device doesn't have location yet or has explicit x/y, skip
+    if (!d.location) {
+      d.x = d.x || (cx + Math.random() * 200 - 100);
+      d.y = d.y || (cy + Math.random() * 200 - 100);
+      continue;
+    }
+    
+    // Logarithmic compression: 
+    // canvasDist = Math.log(meters + 1) * scaleFactor
+    const dist = calcDist(aLat, aLon, d.location[0], d.location[1]);
+    const bearing = calcBearing(aLat, aLon, d.location[0], d.location[1]);
+    
+    // Scale factor: 50 pixels per "log unit"
+    const canvasDist = Math.log(dist + 1) * 50; 
+    
+    d.x = cx + canvasDist * Math.sin(bearing);
+    d.y = cy - canvasDist * Math.cos(bearing); // - because display Y is inverted
+  }
+}
+// Apply initially for mock fallback data
+applyLogarithmicLayout(devices);
+
+
 
 const $ = id => document.getElementById(id);
 
@@ -93,25 +176,11 @@ if (addBtn && addDropdown) {
 }
 $('add-context-btn')?.addEventListener('click', () => {
   addDropdown?.classList.remove('open');
-  const id = `ctx_${Date.now()}`;
-  const newCtx = {
-    id, name: `New Context`, type: 'custom', subtype: 'context', status: 'idle', progress: 0,
-    x: 200 + Math.random() * 600, y: 200 + Math.random() * 400,
-    agents: [], humans: [], robots: [], hardware: [], artifacts: []
-  };
-  contexts.push(newCtx);
-  renderMesh();
+  createWorkspace(`New Context`, 'personal', 'context');
 });
 $('add-project-btn')?.addEventListener('click', () => {
   addDropdown?.classList.remove('open');
-  const id = `ctx_${Date.now()}`;
-  const newCtx = {
-    id, name: `New Project`, type: 'project', subtype: 'project', status: 'active', progress: 0,
-    x: 200 + Math.random() * 600, y: 200 + Math.random() * 400,
-    agents: [], humans: [], robots: [], hardware: [], artifacts: []
-  };
-  contexts.push(newCtx);
-  renderMesh();
+  createWorkspace(`New Project`, 'hedgefund', 'project');
 });
 
 // ── Delete Mode ────────────────────────────────────────────
@@ -140,12 +209,10 @@ $('delete-confirm')?.addEventListener('click', () => {
   const selected = document.querySelectorAll('.context-card.delete-selected');
   const idsToDelete = Array.from(selected).map(el => el.dataset.ctxId).filter(Boolean);
   idsToDelete.forEach(id => {
-    const idx = contexts.findIndex(c => c.id === id);
-    if (idx !== -1) contexts.splice(idx, 1);
+    deleteWorkspace(id);
   });
   deleteMode = false;
   deletePanel?.classList.remove('open');
-  renderMesh();
 });
 
 // Close dropdowns when clicking outside
@@ -496,6 +563,46 @@ function renderDeviceNodes() {
 function renderMesh() {
   renderContextCards();
   renderDeviceNodes();
+}
+
+// ── Functional Buttons / Interactions ──────────────────────
+
+// Jing Semantic Search
+const jingSearchBtn = $('jing-search-btn');
+const jingSearchInput = $('jing-search-input');
+if (jingSearchBtn && jingSearchInput) {
+  jingSearchBtn.addEventListener('click', () => {
+    const query = jingSearchInput.value.trim();
+    if (query) {
+       // Sends over websocket. Server will reply with a memory graph update later.
+       // For now, logging to indicate it's wired.
+       console.log("Searching Jing:", query);
+       searchJing(query);
+    }
+  });
+  jingSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') jingSearchBtn.click();
+  });
+}
+
+// Log Export to Local PC
+const exportLogsBtn = $('export-logs-btn');
+if (exportLogsBtn) {
+  exportLogsBtn.addEventListener('click', () => {
+     if (!events || events.length === 0) return;
+     // Create a blob from the JSON events and download it
+     const jsonStr = JSON.stringify(events, null, 2);
+     const blob = new Blob([jsonStr], { type: "application/json" });
+     const url = URL.createObjectURL(blob);
+     
+     const a = document.createElement('a');
+     a.href = url;
+     a.download = `velvet_logs_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+     document.body.appendChild(a);
+     a.click();
+     document.body.removeChild(a);
+     URL.revokeObjectURL(url);
+  });
 }
 
 // ── Context Detail Popup ───────────────────────────────────
@@ -898,6 +1005,9 @@ const EVENT_TYPES = ['audio', 'video', 'gps', 'system'];
 const EVENT_CONTENTS = ['Motion detected in peripheral', 'Background noise: typing', 'Location stable', 'Heart rate: 72bpm'];
 
 setInterval(() => {
+  // Skip mock mutations when bridge is live — real data flows through WebSocket
+  if (isConnected()) return;
+
   const now = new Date();
   const timestamp = now.toLocaleTimeString('en-US', { hour12: false });
   events = [...events.slice(-49), {

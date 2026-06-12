@@ -13,9 +13,28 @@ const chatStatus = document.getElementById('agent-chat-status');
 let isOpen = false;
 let isListening = false;
 let isSpeaking = false;
+let isProcessing = false;
 let messages = [
     { id: 1, role: 'agent', text: 'Velvet Nadir online. How can I assist you?' }
 ];
+
+import { sendChat, subscribe } from './ws-bridge.js';
+
+subscribe('chat', (data) => {
+    messages.push({
+        id: Date.now(),
+        role: data.role,
+        text: data.text
+    });
+    renderMessages();
+});
+
+subscribe('gateway', (stateStr) => {
+    isListening = stateStr === 'listening';
+    isProcessing = stateStr === 'processing';
+    isSpeaking = stateStr === 'speaking';
+    updateOrbState();
+});
 
 // ── Render Messages ────────────────────────────────────────
 function renderMessages() {
@@ -30,7 +49,7 @@ function renderMessages() {
 // ── Update Status Display ──────────────────────────────────
 function updateOrbState() {
     // Status text
-    chatStatus.textContent = isListening ? 'Listening...' : isSpeaking ? 'Speaking...' : 'Idle';
+    chatStatus.textContent = isProcessing ? 'Processing...' : isListening ? 'Listening...' : isSpeaking ? 'Speaking...' : 'Idle';
 
     // Orb button state classes
     orbBtn.classList.toggle('listening', isListening);
@@ -65,26 +84,10 @@ function sendMessage() {
 
     messages.push({ id: Date.now(), role: 'user', text });
     chatInput.value = '';
-    isListening = false;
-    updateOrbState();
     renderMessages();
 
-    // Mock agent response
-    setTimeout(() => {
-        isSpeaking = true;
-        updateOrbState();
-        messages.push({
-            id: Date.now(),
-            role: 'agent',
-            text: 'Processing your request across active contexts...'
-        });
-        renderMessages();
-
-        setTimeout(() => {
-            isSpeaking = false;
-            updateOrbState();
-        }, 2000);
-    }, 1000);
+    // Send through bridge
+    sendChat(text);
 }
 
 chatSend.addEventListener('click', sendMessage);

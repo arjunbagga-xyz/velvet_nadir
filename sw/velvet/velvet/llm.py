@@ -17,6 +17,7 @@ __all__ = [
     "VLLMAdapter",
     "MeshLLMAdapter",
     "create_llm_adapter",
+    "get_llm_adapter",
     "VELVET_SYSTEM_PROMPT",
 ]
 
@@ -204,7 +205,7 @@ class MeshLLMAdapter(LLMAdapter):
        - If Remote is best -> Publish to Fabric and await response.
     """
     
-    def __init__(self, service_provider=None):
+    def __init__(self, service_provider=None, affinity_tracker=None):
         # Assuming get_fabric and get_config are available globally or imported
         from velvet.fabric import get_fabric
         from velvet.config import get_config
@@ -213,6 +214,18 @@ class MeshLLMAdapter(LLMAdapter):
         self.local_id = self.config.zenoh.device_id
         # Optional: Direct reference to local service if running in same process
         self.local_service = service_provider 
+        self._affinity_tracker = affinity_tracker
+        
+    @property
+    def affinity_tracker(self):
+        if self._affinity_tracker is None:
+            try:
+                from velvet.gateway import get_gateway
+                gw = get_gateway()
+                self._affinity_tracker = gw._affinity_tracker
+            except Exception:
+                pass
+        return self._affinity_tracker
         
     async def generate(
         self,
@@ -223,13 +236,20 @@ class MeshLLMAdapter(LLMAdapter):
         images: list[str] = None
     ) -> LLMResponse:
         
-        # 1. Discovery & Selection
-        best_node = self._select_best_node()
+        # 1. Identify task type
+        task_type = "chat"
+        if tools:
+            task_type = "tool_call"
+        elif any("code" in m.get("content", "").lower() for m in messages if m.get("role") == "system"):
+            task_type = "code_gen"
+
+        # 2. Discovery & Selection
+        best_node = self._select_best_node(task_type)
         
         if not best_node:
             return LLMResponse("Error: No capable LLM nodes found on the mesh.")
             
-        # 2. Routing
+        # 3. Routing
         if best_node.device_id == self.local_id and self.local_service:
             # Local Fast Path (Function Call)
             logger.info("[MeshLLM] Routing locally (Fast Path)")
@@ -263,8 +283,8 @@ class MeshLLMAdapter(LLMAdapter):
             logger.error(f"[MeshLLM] Stream error: {response.text}")
 
 
-    def _select_best_node(self):
-        """Find the best node based on Load and Locality."""
+    def _select_best_node(self, task_type: str = "chat"):
+        """Find the best node based on Load, Locality, and Model Affinity."""
         from velvet.devices import get_registry
         try:
             registry = get_registry()
@@ -275,6 +295,13 @@ class MeshLLMAdapter(LLMAdapter):
             # Let's iterate all online devices.
             candidates = registry.get_online_devices()
             logger.info(f"[MeshLLM] Found {len(candidates)} online devices: {[d.device_id for d in candidates]}")
+            
+            # Find the best model for this task type
+            best_model = None
+            if self.affinity_tracker:
+                best_model = self.affinity_tracker.best_model_for(task_type)
+                if best_model:
+                    logger.debug(f"[MeshLLM] Best model from affinity tracker for '{task_type}': {best_model}")
             
             scored = []
             for d in candidates:
@@ -292,6 +319,12 @@ class MeshLLMAdapter(LLMAdapter):
                 # Load Penalty
                 # -10 per active task
                 score -= (d.load.active_tasks * 10)
+                
+                # Model Affinity Bonus
+                if best_model and hasattr(d, 'loaded_models') and d.loaded_models:
+                    if any(best_model in m for m in d.loaded_models):
+                        logger.info(f"[MeshLLM] Node {d.device_id} gets affinity bonus for model {best_model}")
+                        score += 30
                 
                 # VRAM Penalty (Blocking if full, simple linear for now)
                 # score += d.load.vram_free_gb * 2 
@@ -694,16 +727,24 @@ def create_llm_adapter(
         return LlamaCppAdapter(**kwargs)
     elif adapter_type == "vllm":
         return VLLMAdapter(**kwargs)
-    elif adapter_type == "google":
-        # Security gate: block cloud LLM unless explicitly allowed
-        from velvet.config import get_config
-        if not get_config().security.allow_google_adapter:
-            raise LLMAdapterError(
-                "Google adapter blocked by security policy. "
-                "Set VELVET_SECURITY_ALLOW_GOOGLE_ADAPTER=true or "
-                "security.allow_google_adapter=true in velvet.toml to opt in."
-            )
-        from velvet.services.google_ai import GoogleAIAdapter
-        return GoogleAIAdapter(**kwargs)
+    elif adapter_type in ("google", "universal"):
+        from velvet.services.universal_llm import UniversalCloudLLMAdapter
+        provider = kwargs.pop("provider", "google") if adapter_type == "universal" else "google"
+        return UniversalCloudLLMAdapter(provider=provider, **kwargs)
     else:
         raise LLMAdapterError(f"Unknown adapter type: {adapter_type}")
+
+
+_default_adapter: LLMAdapter | None = None
+
+def get_llm_adapter() -> LLMAdapter:
+    """Get or create the default LLM adapter (singleton)."""
+    global _default_adapter
+    if _default_adapter is None:
+        from velvet.config import get_config
+        cfg = get_config()
+        kwargs = {"model": cfg.llm.model}
+        if cfg.llm.adapter in ("ollama", "vllm"):
+            kwargs["base_url"] = cfg.llm.base_url
+        _default_adapter = create_llm_adapter(cfg.llm.adapter, **kwargs)
+    return _default_adapter

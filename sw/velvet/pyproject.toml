@@ -65,6 +65,11 @@ llm = [
 vllm = [
     "openai>=1.0",
 ]
+people = [
+    "facenet-pytorch>=2.5.3",
+    "resemblyzer>=0.1.4",
+    "torch>=2.0.0",
+]
 
 [build-system]
 requires = ["hatchling"]

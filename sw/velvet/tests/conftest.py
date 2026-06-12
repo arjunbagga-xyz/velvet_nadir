@@ -54,7 +54,7 @@ def mock_registry():
         name="Test Device",
         device_type=DeviceType.COMPUTE,
         role=DeviceRole.HOST,
-        trust_level=TrustLevel.TRUSTED
+        initial_trust_level=TrustLevel.TRUSTED
     )
     return mock
 

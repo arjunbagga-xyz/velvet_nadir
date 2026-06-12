@@ -2,9 +2,23 @@
 Tests for Audio Pipeline.
 """
 
+import sys
+from unittest.mock import MagicMock, patch, AsyncMock
+
+# Mock optional audio modules if not installed
+try:
+    import openwakeword
+except ImportError:
+    sys.modules["openwakeword"] = MagicMock()
+    sys.modules["openwakeword.model"] = MagicMock()
+
+try:
+    import faster_whisper
+except ImportError:
+    sys.modules["faster_whisper"] = MagicMock()
+
 import pytest
 import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
 from velvet.audio import WakeWordDetector, SpeechToText, AudioCapture
 
 # ============================================================================

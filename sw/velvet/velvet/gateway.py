@@ -24,8 +24,8 @@ from .context import ContextManager, EngagementLevel, get_context_manager
 from .skills import SkillRegistry, SkillResult, AutonomyLevel, get_skill_registry
 from .fabric import VelvetMessage, MessageType, get_fabric
 from .tool_parsing import extract_tool_calls, extract_text_response
-from .tool_parsing import extract_tool_calls, extract_text_response
 from .config import get_config
+from .agents import AgentOrchestrator
 from .shen.yi import Yi
 from .shen.xi import Xi, XiJournal
 from .shen.fuxi import Fuxi
@@ -129,8 +129,10 @@ class Gateway:
         self._tts_lock = asyncio.Lock()
 
         # Project Shen: Cognitive Core
+        self.agent_orchestrator = AgentOrchestrator()
+        self.yi = Yi(start_vision_monitor=vision_enabled, llm_inference=llm_inference)
         self.xi = self._init_xi()
-        self.yi = Yi(start_vision_monitor=vision_enabled, llm_inference=llm_inference, xi=self.xi)
+        self.yi._xi = self.xi
 
     async def start(self) -> None:
         """Start the Gateway, spawn workers, and subscribe to events."""
@@ -149,6 +151,8 @@ class Gateway:
         await fabric.subscribe(MessageType.SKILL_REQUEST.value, self._on_skill_request)
         await fabric.subscribe(MessageType.CANCEL_REQUEST.value, self._on_cancel_request)
         await fabric.subscribe(MessageType.VISION_EVENT.value, self._on_vision_event)
+        await fabric.subscribe(MessageType.DISPLAY_CHAT_IN.value, self._on_chat_in)
+        await fabric.subscribe(MessageType.SKILL_PENDING_APPROVAL.value, self._on_skill_pending_approval)
 
         logger.info(f"Gateway started with {self._max_workers} workers, timeout={self._llm_timeout}s")
 
@@ -286,6 +290,25 @@ class Gateway:
         
         if image_b64:
              await self.yi.on_vision_event(image_b64, score)
+        
+    async def _on_chat_in(self, msg: VelvetMessage) -> None:
+        """Handle incoming chat from the Display UI."""
+        text = msg.payload.get("text")
+        if text:
+            logger.info(f"[Gateway] Received UI chat: {text}")
+            await self._process_input(text)
+
+    async def _on_skill_pending_approval(self, msg: VelvetMessage) -> None:
+        """Handle a notification that a new skill is pending approval."""
+        payload = msg.payload
+        skill_name = payload.get("skill_name")
+        description = payload.get("description")
+        logger.info(f"[Gateway] New skill pending approval: {skill_name} ({description})")
+        if self.state == GatewayState.IDLE:
+            await self._speak(
+                f"I noticed you've been doing some tasks repeatedly. I've drafted a new skill called "
+                f"{skill_name} to automate this. Should I enable it?"
+            )
 
     def _enqueue(self, request: GatewayRequest) -> None:
         """Add a request to the priority queue with a monotonic sequence number."""
@@ -326,8 +349,8 @@ class Gateway:
                 logger.info("Request cancelled during Yi processing")
                 return
 
-            # Speak response
-            await self._speak(response)
+            # Parse for tool calls, then speak or execute
+            await self._handle_llm_response(response)
 
         except asyncio.TimeoutError:
             logger.warning("Yi timed out")
@@ -416,6 +439,12 @@ class Gateway:
                 MessageType.TTS_SPEAK.value,
                 {"text": text}
             )
+            
+            # Send to UI Display
+            await fabric.publish(
+                MessageType.DISPLAY_CHAT_OUT.value,
+                {"text": text}
+            )
 
             # Wait for playback to finish (with timeout)
             try:
@@ -464,6 +493,34 @@ class Gateway:
             logger.error(f"Skill execution error: {e}")
             return SkillResult.fail(str(e))
 
+    async def resolve_pending_action(self, correlation_id: str, approved: bool) -> None:
+        """Resolve a pending action, executing if approved and updating TrustEngine."""
+        action = None
+        for a in self.pending_actions:
+            if a.correlation_id == correlation_id:
+                action = a
+                break
+
+        if not action:
+            logger.warning(f"[Gateway] Pending action not found: {correlation_id}")
+            return
+
+        self.pending_actions.remove(action)
+
+        # Record outcome in TrustEngine
+        if self._trust_engine:
+            await self._trust_engine.record_outcome(
+                domain="skills",
+                context=action.skill_name,
+                approved=approved
+            )
+
+        if approved:
+            logger.info(f"[Gateway] Action approved: {action.skill_name}")
+            await self.execute_skill(action.skill_name, action.params)
+        else:
+            logger.info(f"[Gateway] Action rejected: {action.skill_name}")
+
     # =========================================================================
     # Xi (Background Task Manager)
     # =========================================================================
@@ -476,6 +533,8 @@ class Gateway:
             from .shen.saraswati import Saraswati
             from .shen.trust import TrustEngine
             from .shen.affinity import ModelAffinityTracker
+            from .shen.triangulation import TriangulationTask
+            from .shen.skill_approval import SkillApprovalTask
 
             xi = Xi()
 
@@ -484,14 +543,16 @@ class Gateway:
             affinity_tracker = ModelAffinityTracker()
 
             # Register core BreathTasks (priority order)
-            xi.register_task(Fuxi())                                # Priority 3: consolidation
+            xi.register_task(Fuxi(jing=self.yi.jing, po=self.yi.po))                                # Priority 3: consolidation
             xi.register_task(Agni())                                # Priority 5: purification
+            xi.register_task(TriangulationTask())                   # Priority 6: spatial learning
             xi.register_task(Inari(                                 # Priority 7: cache refresh
                 trust_engine=trust_engine,
                 affinity_tracker=affinity_tracker,
             ))
             xi.register_task(DeviceWatchdog())                      # Priority 8: health monitor
             xi.register_task(Saraswati(trust_engine=trust_engine))  # Priority 9: skill learning
+            xi.register_task(SkillApprovalTask())                   # Priority 10: skill approval check
 
             # Store references for external access
             self._trust_engine = trust_engine

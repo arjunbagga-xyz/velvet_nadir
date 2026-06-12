@@ -184,7 +184,6 @@ async def interrogate_device(device_id: str) -> SkillResult:
     parameters=[
         SkillParameter("device_id", "string", "ID of device to onboard"),
         SkillParameter("role", "string", "host or peripheral"),
-        SkillParameter("trust", "string", "trusted or untrusted"),
         SkillParameter("manager_id", "string", "ID of host managing this peripheral", required=False),
         SkillParameter("credentials", "dict", "SSH/RTSP credentials", required=False)
     ],
@@ -194,7 +193,6 @@ async def interrogate_device(device_id: str) -> SkillResult:
 async def onboard_device(
     device_id: str,
     role: str = "host",
-    trust: str = "trusted",
     manager_id: str | None = None,
     credentials: dict | None = None
 ) -> SkillResult:
@@ -211,9 +209,9 @@ async def onboard_device(
     
     try:
         r = DeviceRole(role.lower())
-        t = TrustLevel(trust.lower())
+        t = TrustLevel.UNTRUSTED
     except ValueError:
-        return SkillResult.fail("Invalid role or trust level.")
+        return SkillResult.fail("Invalid role.")
         
     # Instantiate appropriate driver
     from .drivers import NativeDriver, RTSPDriver, ConnectionInfo, ConnectionMethod
@@ -264,7 +262,7 @@ async def onboard_device(
         name=scanned.name,
         device_type=DeviceType.COMPUTE if r == DeviceRole.HOST else DeviceType.SENSOR,
         role=r,
-        trust_level=t,
+        initial_trust_level=t,
         manager_id=manager_id,
         connection=conn_info, # Save connection info
         status=DeviceStatus.ONLINE, 
@@ -272,11 +270,11 @@ async def onboard_device(
         metadata={"driver": driver.__class__.__name__ if driver else "None"}
     )
     
-    # Publish MESH_DEVICE_ANNOUNCE
+    # Publish DEVICE_ANNOUNCE
     fabric = get_fabric()
-    await fabric.publish(MessageType.MESH_DEVICE_ANNOUNCE.value, new_device.to_dict())
+    await fabric.publish(MessageType.DEVICE_ANNOUNCE.value, new_device.to_dict())
     
     return SkillResult.ok(
-        speak=f"Device {scanned.name} onboarded as {t.value} {r.value}. {success_msg}",
-        display={"markdown": f"✅ **Success**: {scanned.name} is now part of the mesh.\n\n{success_msg}"}
+        speak=f"Device {scanned.name} onboarded as untrusted {r.value}. To promote to trusted, I'll need to verify your identity. {success_msg}",
+        display={"markdown": f"✅ **Success**: {scanned.name} is now part of the mesh as an UNTRUSTED device.\n\nTo promote it to TRUSTED, a biometric trust request is required.\n\n{success_msg}"}
     )

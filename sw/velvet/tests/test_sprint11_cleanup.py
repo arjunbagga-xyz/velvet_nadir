@@ -148,11 +148,16 @@ async def test_saraswati_approval_queue(tmp_path):
             assert "test_skill" in data
             assert data["test_skill"]["description"] == "A test skill"
             
-            # Verify notification
-            mock_fabric.publish.assert_called_once()
-            args = mock_fabric.publish.call_args[0]
-            assert args[0] == "velvet/mesh/notify"
-            assert "test_skill" in args[1]["text"]
+            # Verify notification (two calls: TTS notification and pending approval topic)
+            assert mock_fabric.publish.call_count == 2
+            
+            call_args_1 = mock_fabric.publish.call_args_list[0][0]
+            assert call_args_1[0] == "velvet/mesh/notify"
+            assert "test_skill" in call_args_1[1]["text"]
+
+            call_args_2 = mock_fabric.publish.call_args_list[1][0]
+            assert call_args_2[0] == "skill/pending_approval"
+            assert call_args_2[1]["skill_name"] == "test_skill"
 
 # 6. __all__ Export Tests
 def test_all_exports():

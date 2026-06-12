@@ -1,29 +1,36 @@
 # Velvet Nadir Handoff Document
 
-> Current state of the system after Sprint 11, for the next agent or session.
+> Current state of the system after Sprint 16, for the next agent or session.
 
-**Last Updated:** March 25, 2026
+**Last Updated:** June 12, 2026
 
 ---
 
 ## 1. System State
 
-### Sprint 10: COMPLETE ✅ (128 tests passing)
+### Sprint 16: COMPLETE ✅ (200+ tests passing)
 
-**Phase 1: Hive Mind Memory** — Jing (PowerMem integration), Tartarus (cold store), MeshMemorySync, PrivacyGuard  
-**Phase 2: Xi Background Tasks** — Xi scheduler, Fuxi (consolidation), Agni (purification)  
-**Phase 3: Trust + Agents + Affinity** — TrustEngine, AgentOrchestrator, ModelAffinityTracker, Inari, DeviceWatchdog  
-**Phase 4: Saraswati Skill Learning** — Shruti (observe) → Smriti (codify) → Vidya (validate + deploy)  
+**Cognitive Repair & Self-Healing Embeddings:**
+- **Wired tool execution:** gateway.py `_process_input` now routes to `_handle_llm_response` to parse and execute tool calls.
+- **get_llm_adapter singleton:** Resolved broken imports of `get_llm_adapter` in `saraswati.py` and `jing.py`, enabling semantic search expanders and skill observation.
+- **Unified Po/Jing instances:** Modified gateway `_init_xi` to pass Yi's live Po and Jing instances to the Fuxi Consolidation BreathTask.
+- **Wired VisionMonitor:** Injected `XiangEngine` into `VisionMonitor` in `Po.__init__` enabling facial/voice recognition.
+- **Model Affinity & Trust feedback:** Mesh node routing scores candidates by ModelAffinity, and PendingAction resolutions update `TrustEngine` outcomes.
+- **Self-Healing Embedding Waterfall:** Probes Ollama -> vLLM -> ONNX -> Cloud (Gemini/NVIDIA/OpenRouter) dynamically.
+- **Universal Cloud LLM Adapter:** Replaced GoogleAIAdapter with a unified adapter for Gemini, NVIDIA NIM, and OpenRouter, gated by `allow_cloud_adapters` in SecurityConfig.
+- **Saraswati Skill Approval:** Added `SkillApprovalTask` in Xi to check pending skills and proactively prompt the user, along with a GET/POST REST API in the `DisplayBridge` `/api/skills/pending`.
 
-### Sprint 11: CLEANUP COMPLETE ✅
-Standardized API exports, sandboxed risky device scripts, audited imports, and added high-perf backend support via Polymath.
-- **100% Test Success** (171/171 regression tests passing) confirming all Sprint 11 features.
-- **`__all__` exports** added to 19 modules for cleaner Public API.
-- **`DeviceScript` Sandbox** added (AST validation + restricted run).
-- **Standardized Error Handling** (new `errors.py`) across all adapters.
-- **Polymath Integration** in `LLMService` for optimized hardware loading.
-- **TOML Config Support** (`velvet.toml`) for easier deployment.
-- **Skill Approval Queue** in `Saraswati` for learned skills.
+### Sprint 15: UI DASHBOARD & ZENOH WILDCARD ROUTING COMPLETE ✅
+- **Display Bridge & UI Connectivity** — WebSocket UI dashboard syncs real-time events.
+- **Zenoh Wildcard Pattern Matching** — Local wildcard routing (`*` and `**`) handles broad local subscriptions correctly.
+
+### Sprint 14: THE BASILISK PROTOCOL COMPLETE (PHASE 1) ✅
+- **Basilisk Protocol** — Ephemeral RAM enclaves for secure P2P RPC without long-term persistence.
+
+### Sprint 13: PERCEPTION & INTELLIGENCE MVP COMPLETE ✅
+- **TrustGate** — Non-agentic biometric security perimeter guarding device trust.
+- **Xiàng (相)** — Facial/voice biometrics matching in Jing.
+- **Locus + Triangulation** — Haversine spatial tracking and geofence learning.
 
 ---
 
@@ -38,9 +45,9 @@ User speaks → Gateway → Yi.dispatch() → Po/Hun → response
                                 │
                          Xi journal (JSONL)
                                 │
-    ┌──────────┬────────┬───────┼──────────┬──────────────┐
-    ▼          ▼        ▼       ▼          ▼              ▼
- Fuxi(3)   Agni(5)  Inari(7) Watchdog(8) Saraswati(9)  [future]
+    ┌──────────┬────────┬───────┼──────────┬──────────────┬──────────────────┐
+    ▼          ▼        ▼       ▼          ▼              ▼                  ▼
+ Fuxi(3)    Agni(5)  Inari(7) Watchdog(8) Saraswati(9) SkillApproval(10) [future]
 ```
 
 ### Key Components
@@ -51,30 +58,20 @@ User speaks → Gateway → Yi.dispatch() → Po/Hun → response
 | Po | `shen/po.py` | Fast reflexes + learned patterns + vision |
 | Hun | `shen/hun.py` | Deep reasoning via LLM |
 | Jing | `shen/jing.py` | Tiered memory (Aether/Mnemosyne/Tartarus) |
+| Xiàng | `shen/xiang.py` | People recognition (facial/voice biometrics) |
+| Locus | `shen/locus.py` | Spatial awareness and Geofence tracking |
 | Xi | `shen/xi.py` | Background task scheduler |
-| Polymath | `shen/polymath.py` | Hardware intel + config builder |
+| Polymath | `shen/polymath.py` | Hardware intel + config builder (resilient embeddings waterfall) |
+| Universal LLM | `services/universal_llm.py` | Unified Cloud LLM (Gemini/NVIDIA/OpenRouter) |
 | Gateway | `gateway.py` | Central orchestrator + Xi lifecycle + tool parsing |
 | TrustEngine | `shen/trust.py` | Device trust with hot cache + confidence EMA |
+| Basilisk | `basilisk.py` | Ephemeral RAM enclaves + Sanitization |
 | PrivacyGuard | `privacy.py` | Dual perimeter (mesh/internet + trusted/untrusted) |
 | Errors | `errors.py` | Centralized Velvet Error hierarchy |
 
-### Communication
-
-- **Zenoh** peer-to-peer fabric (no broker)
-- Topics: `audio/wake`, `audio/transcript`, `skill/request`, `mesh/device/*`, etc.
-- MeshMemorySync replicates writes across trusted peers
-
-### Memory Hierarchy
-
-| Tier | Name | Storage | Access |
-|------|------|---------|--------|
-| Hot | Aether | PowerMem RAM | Instant |
-| Warm | Mnemosyne | PowerMem vector | ~10ms |
-| Cold | Tartarus | SQLite FTS5 | ~50ms |
-
 ---
 
-## 3. File Structure (42 source files)
+## 3. File Structure (44 source files)
 
 ```
 velvet/
@@ -86,24 +83,34 @@ velvet/
 ├── privacy.py, agents.py             # Security
 ├── skills/, example_skills/          # Tool system
 ├── services/                         # External adapters
-└── shen/                             # Cognitive (15 modules)
+│   ├── google_ai.py
+│   └── universal_llm.py              # [NEW] Cloud completions
+└── shen/                             # Cognitive (16 modules)
     ├── yi.py, po.py, hun.py, jing.py
+    ├── xiang.py, locus.py, trust_gate.py
     ├── polymath.py, tartarus.py, mesh_memory.py
-    ├── xi.py, fuxi.py, agni.py
-    ├── trust.py, affinity.py
-    ├── inari.py, device_watchdog.py, saraswati.py
+    ├── xi.py, fuxi.py, agni.py, triangulation.py
+    ├── trust.py, affinity.py, skill_approval.py  # [NEW] Proactive approval BreathTask
+    └── inari.py, device_watchdog.py, saraswati.py
 ```
 
 ---
 
-## 4. Next Steps: Post-Cleanup
+## 4. Next Steps & Deferred Items
 
-### Post-Cleanup
+### Immediate Next Steps
 
-- Train custom "Hey Velvet" wake word
-- Finalize mTLS mesh security layer
-- Zenoh security (PSK/mTLS)
-- End-to-end live integration test
+- **Train custom "Hey Velvet" wake word**
+- **End-to-end live integration test (with live Ollama and real audio)**
+- **PrivacyGuard exfiltration filters:** Deepen the outbound security filter checks for cloud requests inside the PrivacyGuard.
+
+### Deferred for Future (Post-MVP)
+
+- **Context merging implementation** (deferred due to GPS/hardware requirements)
+- **TensorRT-LLM adapter** for high-speed local inference on Jetson
+- **Deploy on Jetson Thor hardware**
+- **Smart home integrations** (Home Assistant)
+- **Vehicle integration** (CAN bus, OBD-II)
 
 ---
 
@@ -115,12 +122,13 @@ velvet/
 | Memory consolidation | ✅ | Xi + Fuxi + Agni BreathTasks |
 | Skill hot-plug | ✅ | Saraswati → Vidya → `~/.velvet/skills/` |
 | Device mesh + heartbeats | ✅ | `devices.py` + `fabric.py` |
-| Privacy model | ⚠️ | 2-level (trusted/untrusted) vs. vision's 4-level |
-| Model routing | ✅ | MeshLLMAdapter + ModelAffinityTracker |
-| Display routing | ❌ | TTS-only output |
-| People recognition | ❌ | No face/voice embedding |
-| Spatial awareness | ❌ | No geofence triggers |
-| Context merging | ❌ | No location-based merge |
+| Privacy model | ✅ | 4-level classification (via Basilisk Protocol in Sprint 14) |
+| Model routing | ✅ | MeshLLMAdapter + ModelAffinityTracker (wired in Sprint 16) |
+| Display routing | ❌ | TTS-only output (Target: Sprint 15) |
+| People recognition | ✅ | Xiàng facial/voice recognition integration (wired in Po in Sprint 16) |
+| Spatial awareness | ✅ | Locus + Triangulation geofence learning (Sprint 13) |
+| Context merging | ❌ | Deferred due to hardware constraints |
+| Secure P2P RPC | ✅ | Basilisk Protocol (Sprint 14) |
 
 ---
 
@@ -130,10 +138,6 @@ velvet/
 # Tests
 cd sw/velvet
 python -m pytest tests/ -v
-
-# Sprint 10 tests specifically
-python -m pytest tests/test_phase1_memory.py tests/test_phase2_xi.py \
-    tests/test_phase3_trust.py tests/test_phase4_saraswati.py tests/test_po_reflexes.py -v
 
 # Run system (requires Ollama)
 python -m velvet.main

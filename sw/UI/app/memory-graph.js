@@ -1,21 +1,44 @@
 // ── Memory Graph — D3 Force-Directed Graph ─────────────────
-import { MEMORY_NODES, MEMORY_LINKS } from './data.js';
+// Renders the MemPalace Knowledge Graph (live from bridge) or
+// falls back to mock MEMORY_NODES/MEMORY_LINKS from data.js.
+
+import { subscribe, state } from './ws-bridge.js';
+import { MEMORY_NODES, MEMORY_LINKS } from './data.js'; // Fallback only
 
 let graphInitialized = false;
+let currentSimulation = null;
+
+// Subscribe to live memory graph updates from the bridge
+subscribe('memory', (graphData) => {
+    if (graphData && graphData.nodes && graphData.nodes.length > 0) {
+        rebuildGraph(graphData.nodes, graphData.links || []);
+    }
+});
 
 export function initMemoryGraph() {
+    const graph = state.memoryGraph;
+    const nodes = graph?.nodes?.length ? graph.nodes : MEMORY_NODES;
+    const links = graph?.links?.length ? graph.links : MEMORY_LINKS;
+    rebuildGraph(nodes, links);
+}
+
+function rebuildGraph(sourceNodes, sourceLinks) {
     const container = document.getElementById('memory-graph');
-    if (!container || graphInitialized) return;
+    if (!container) return;
 
     // Wait for container to be visible and have dimensions
     requestAnimationFrame(() => {
         const width = container.clientWidth;
         const height = container.clientHeight;
         if (width === 0 || height === 0) {
-            // Retry on next frame
-            graphInitialized = false;
-            setTimeout(() => initMemoryGraph(), 100);
+            setTimeout(() => rebuildGraph(sourceNodes, sourceLinks), 100);
             return;
+        }
+
+        // Kill previous simulation if running
+        if (currentSimulation) {
+            currentSimulation.stop();
+            currentSimulation = null;
         }
 
         graphInitialized = true;
@@ -41,8 +64,8 @@ export function initMemoryGraph() {
         svg.call(zoom);
 
         // Copy data
-        const nodes = MEMORY_NODES.map(d => ({ ...d }));
-        const links = MEMORY_LINKS.map(d => ({ ...d }));
+        const nodes = sourceNodes.map(d => ({ ...d }));
+        const links = sourceLinks.map(d => ({ ...d }));
 
         const simulation = d3.forceSimulation(nodes)
             .force('link', d3.forceLink(links).id(d => d.id).distance(100))
@@ -55,6 +78,8 @@ export function initMemoryGraph() {
                 return height / 2;
             }).strength(0.5))
             .force('collide', d3.forceCollide().radius(40));
+
+        currentSimulation = simulation;
 
         // Links
         const link = g.append('g')
@@ -88,6 +113,8 @@ export function initMemoryGraph() {
                 case 'location': return '#14b8a6';
                 case 'asset': return '#f43f5e';
                 case 'event': return '#eab308';
+                case 'tool': return '#06b6d4';
+                case 'concept': return '#a855f7';
                 default: return '#999';
             }
         }

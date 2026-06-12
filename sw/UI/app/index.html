@@ -82,6 +82,10 @@
               <circle cx="12" cy="12" r="3" />
             </svg>
           </button>
+          <div id="bridge-status" class="bridge-status bridge-status--offline">
+            <span class="bridge-status__dot"></span>
+            <span class="bridge-status__label">MOCK</span>
+          </div>
 
           <!-- Popout panels (slide down from this bar) -->
           <div class="add-dropdown" id="add-dropdown">
@@ -201,7 +205,12 @@
         <!-- ═══ MEMORY VIEW ═════════════════════════════════ -->
         <div class="view-panel" id="view-memory">
           <div class="memory-view">
-            <div class="memory-view__graph-area">
+            <div class="memory-view__header" style="padding: 1rem 1.5rem; display: flex; gap: 1rem; align-items: center; border-bottom: 1px solid var(--border);">
+              <h2 class="logs-view__title" style="margin: 0; padding: 0;">Jing Memory</h2>
+              <input type="text" id="jing-search-input" placeholder="Semantic search..." style="flex: 1; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; color: var(--text);">
+              <button id="jing-search-btn" class="remote-ctrl-btn remote-ctrl-btn--neutral" style="flex:0;padding:6px 12px;">Search</button>
+            </div>
+            <div class="memory-view__graph-area" style="height: calc(100% - 60px);">
               <div id="memory-graph" style="width:100%;height:100%;background:var(--bg);overflow:hidden;">
               </div>
               <div class="memory-view__legend">
@@ -228,7 +237,7 @@
               <div class="logs-view__actions">
                 <button class="remote-ctrl-btn remote-ctrl-btn--neutral"
                   style="flex:0;padding:6px 12px;font-size:0.75rem;">Filter</button>
-                <button class="remote-ctrl-btn remote-ctrl-btn--neutral"
+                <button id="export-logs-btn" class="remote-ctrl-btn remote-ctrl-btn--neutral"
                   style="flex:0;padding:6px 12px;font-size:0.75rem;">Export</button>
               </div>
             </div>
@@ -339,8 +348,9 @@
   </div>
 
   <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="lib/d3.min.js"></script>
   <script type="module" src="data.js"></script>
+  <script type="module" src="ws-bridge.js"></script>
   <script type="module" src="memory-graph.js"></script>
   <script type="module" src="agent-orb.js"></script>
   <script type="module" src="app.js"></script>

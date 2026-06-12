@@ -50,7 +50,7 @@ def monitor_loop():
         time.sleep(1)
 
 def main():
-    print("🟣 VELVET NADIR SUPERVISOR")
+    print("VELVET NADIR SUPERVISOR")
     print("="*40)
     print("Starting subsystems...")
     

@@ -2,12 +2,18 @@
 Jing (精): The Essence / Memory.
 
 Persistent long-term memory for the Shen system.
-Wraps PowerMem for vector + graph storage with Ebbinghaus intelligent decay.
+Wraps PowerMem for vector storage with Ebbinghaus intelligent decay,
+MemPalace KnowledgeGraph for temporal entity-relationship graph,
+and Tartarus for cold FTS5 archive.
 
 Memory tiers:
   Aether     — Hot: active vector index, fast embedding similarity
   Mnemosyne  — Warm: still searchable, lower priority (retention 0.1-0.3)
   Tartarus   — Cold: archived, FTS5 text search, promotable back to Aether
+
+Knowledge Graph (MemPalace):
+  Temporal entity-relationship triples backed by local SQLite.
+  Supports add_triple(), query_entity(), timeline(), invalidate().
 
 All tiers are mesh-wide. MeshMemorySync handles cross-device replication.
 """
@@ -22,13 +28,18 @@ class Jing:
     """
     Jing (精): The Essence / Memory.
 
-    Provides persistent long-term memory via PowerMem with Aether/Mnemosyne/Tartarus tiers.
-    Falls back to ephemeral (empty) memory if PowerMem is unavailable.
+    Provides persistent long-term memory via:
+    - PowerMem: vector embeddings with Ebbinghaus decay (Aether/Mnemosyne)
+    - MemPalace KnowledgeGraph: temporal entity-relationship graph (SQLite)
+    - Tartarus: cold FTS5 archive
+
+    Falls back to ephemeral (empty) memory if dependencies are unavailable.
     """
 
     def __init__(self):
         self._mem = None
         self._tartarus = None
+        self._kg = None  # MemPalace KnowledgeGraph
         self._ready = False
         self._ensure_loaded()
 
@@ -47,6 +58,21 @@ class Jing:
         except Exception as e:
             logger.warning(f"[Jing] Tartarus init failed: {e}")
             self._tartarus = None
+
+        # MemPalace KnowledgeGraph (temporal entity-relationship graph)
+        try:
+            from mempalace.knowledge_graph import KnowledgeGraph
+            from velvet.config import get_config
+            cfg = get_config()
+            db_path = cfg.memory.graph_db_path
+            self._kg = KnowledgeGraph(db_path=db_path)
+            logger.info(f"[Jing] MemPalace KnowledgeGraph initialized at {db_path}")
+        except ImportError:
+            logger.warning("[Jing] mempalace not installed. Knowledge graph unavailable.")
+            self._kg = None
+        except Exception as e:
+            logger.error(f"[Jing] MemPalace KG init failed: {e}")
+            self._kg = None
 
         # PowerMem (hot/warm tiers)
         try:
@@ -111,6 +137,24 @@ class Jing:
         if text:
             await self.remember(text, role=role, metadata=metadata)
 
+    async def remember_person(self, name: str, face_emb: list[float] | None = None, voice_emb: list[float] | None = None):
+        """
+        Store a person identity with biometrics in Jing.
+        """
+        metadata = {"type": "person", "name": name}
+        if face_emb:
+            metadata["face_embedding"] = face_emb
+        if voice_emb:
+            metadata["voice_embedding"] = voice_emb
+            
+        text = f"Known person identity: {name}"
+        await self.remember(text, role="system", metadata=metadata)
+        
+        # Local mock implementation for testing if PowerMem is off
+        if not hasattr(self, '_mock_people'):
+            self._mock_people = []
+        self._mock_people.append(metadata)
+
     # =========================================================================
     # Read Path
     # =========================================================================
@@ -160,22 +204,168 @@ class Jing:
             logger.error(f"[Jing] Local search failed: {e}")
             return []
 
+    async def recall_by_embedding(self, embedding: list[float], type_tag: str = "person", modality: str = "face") -> dict | None:
+        """
+        Recall known memories (identities) by vector similarity on the embedding.
+        """
+        # If we have a _mem structure that supports it
+        if self._mem and hasattr(self._mem, 'search_by_vector'):
+            try:
+                results = self._mem.search_by_vector(embedding, limit=1, filter={"type": type_tag})
+                if results and results.get("results"):
+                    best = results["results"][0]
+                    return {
+                        "name": best["metadata"].get("name", "unknown"),
+                        "confidence": best.get("score", 0.0)
+                    }
+            except Exception as e:
+                logger.error(f"[Jing] recall_by_embedding powermem failed: {e}")
+                
+        # Mock / Fallback logic for testing
+        if hasattr(self, '_mock_people'):
+            best_person = None
+            best_score = -1.0
+            
+            import numpy as np
+            emb_vec = np.array(embedding)
+            
+            for p in self._mock_people:
+                target_emb = p.get(f"{modality}_embedding")
+                if target_emb:
+                    t_vec = np.array(target_emb)
+                    # cosine similarity = A.dot(B) / (|A|*|B|)
+                    norm_emb = np.linalg.norm(emb_vec)
+                    norm_t = np.linalg.norm(t_vec)
+                    if norm_emb and norm_t:
+                        sim = np.dot(emb_vec, t_vec) / (norm_emb * norm_t)
+                        if sim > best_score:
+                            best_score = float(sim)
+                            best_person = p["name"]
+                        
+            if best_person is not None:
+                return {"name": best_person, "confidence": best_score}
+                
+        return None
+
     async def graph_query(self, query: str) -> list[str]:
         """
         Query the knowledge graph for entity/relation information.
 
-        Uses PowerMem's built-in graph store (SQLite + LLM entity extraction).
+        Uses MemPalace's temporal KnowledgeGraph (SQLite-backed).
         """
-        if not self._mem:
+        if not self._kg:
             return []
 
         try:
-            results = self._mem.search(query, limit=5)
-            relations = results.get("relations", [])
-            return [str(r) for r in relations]
+            results = self._kg.query_entity(query)
+            return [str(r) for r in results]
         except Exception as e:
             logger.error(f"[Jing] Graph query failed: {e}")
             return []
+
+    async def graph_add_entity(self, name: str, entity_type: str = "concept"):
+        """Register an entity in the knowledge graph."""
+        if not self._kg:
+            return
+        try:
+            self._kg.add_entity(name, entity_type=entity_type)
+            logger.debug(f"[Jing] KG entity added: {name} ({entity_type})")
+        except Exception as e:
+            logger.error(f"[Jing] KG add_entity failed: {e}")
+
+    async def graph_add_relation(self, subject: str, predicate: str, obj: str,
+                                  valid_from: str | None = None):
+        """Add a relationship triple to the knowledge graph."""
+        if not self._kg:
+            return
+        try:
+            kwargs = {}
+            if valid_from:
+                kwargs["valid_from"] = valid_from
+            self._kg.add_triple(subject, predicate, obj, **kwargs)
+            logger.debug(f"[Jing] KG triple added: {subject} → {predicate} → {obj}")
+        except Exception as e:
+            logger.error(f"[Jing] KG add_triple failed: {e}")
+
+    async def graph_invalidate(self, subject: str, predicate: str, obj: str,
+                                ended: str | None = None):
+        """Invalidate a fact in the knowledge graph (it stopped being true)."""
+        if not self._kg:
+            return
+        try:
+            kwargs = {}
+            if ended:
+                kwargs["ended"] = ended
+            self._kg.invalidate(subject, predicate, obj, **kwargs)
+            logger.debug(f"[Jing] KG fact invalidated: {subject} → {predicate} → {obj}")
+        except Exception as e:
+            logger.error(f"[Jing] KG invalidate failed: {e}")
+
+    async def graph_timeline(self, entity: str) -> list:
+        """Get the chronological story of an entity."""
+        if not self._kg:
+            return []
+        try:
+            return self._kg.timeline(entity)
+        except Exception as e:
+            logger.error(f"[Jing] KG timeline failed: {e}")
+            return []
+
+    def get_graph_snapshot(self) -> dict:
+        """
+        Return full graph state for UI visualization.
+
+        Returns {nodes: [...], links: [...]} for the D3 force-directed graph.
+        """
+        if not self._kg:
+            return {"nodes": [], "links": []}
+
+        try:
+            stats = self._kg.stats()
+            nodes = []
+            links = []
+
+            # Build nodes from entity types reported by stats
+            # Query all entities by fetching relationships for known types
+            seen_entities = set()
+
+            # Get all relationship types and query each
+            for rel_type in stats.get("relationship_types", []):
+                try:
+                    rels = self._kg.query_relationship(rel_type)
+                    for r in rels:
+                        subj = str(r.get("subject", r) if isinstance(r, dict) else r)
+                        obj_val = str(r.get("object", "") if isinstance(r, dict) else "")
+                        pred = str(r.get("predicate", rel_type) if isinstance(r, dict) else rel_type)
+
+                        if subj and subj not in seen_entities:
+                            seen_entities.add(subj)
+                            nodes.append({
+                                "id": subj,
+                                "type": r.get("subject_type", "concept") if isinstance(r, dict) else "concept",
+                                "tier": 1
+                            })
+                        if obj_val and obj_val not in seen_entities:
+                            seen_entities.add(obj_val)
+                            nodes.append({
+                                "id": obj_val,
+                                "type": r.get("object_type", "concept") if isinstance(r, dict) else "concept",
+                                "tier": 2
+                            })
+                        if subj and obj_val:
+                            links.append({
+                                "source": subj,
+                                "target": obj_val,
+                                "label": pred,
+                                "value": 1
+                            })
+                except Exception:
+                    continue
+
+            return {"nodes": nodes, "links": links}
+        except Exception as e:
+            logger.error(f"[Jing] get_graph_snapshot failed: {e}")
+            return {"nodes": [], "links": []}
 
     # =========================================================================
     # Memory Management (used by Agni)
@@ -265,7 +455,7 @@ class Jing:
                 f'Output as a comma-separated list, nothing else.'
             )
             response = await adapter.generate(prompt, max_tokens=50)
-            keywords = [kw.strip() for kw in response.split(",") if kw.strip()]
+            keywords = [kw.strip() for kw in response.text.split(",") if kw.strip()]
             keywords.append(query)  # Always include the original
             return keywords
         except Exception:
@@ -274,8 +464,13 @@ class Jing:
 
     @property
     def is_persistent(self) -> bool:
-        """True if PowerMem is available (not ephemeral mode)."""
-        return self._mem is not None
+        """True if at least one persistent store is available."""
+        return self._mem is not None or self._kg is not None
+
+    @property
+    def has_knowledge_graph(self) -> bool:
+        """True if MemPalace KnowledgeGraph is available."""
+        return self._kg is not None
 
     @property
     def has_tartarus(self) -> bool:

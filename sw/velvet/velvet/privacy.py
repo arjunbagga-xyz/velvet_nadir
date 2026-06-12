@@ -63,12 +63,26 @@ class PrivacyGuard:
             return False
         return device.is_trusted()
 
-    def can_sync_memory(self, device_id: str) -> bool:
+    def biometric_auto_restrict(self, data_type: str) -> bool:
+        """
+        Check if a data type is biometric and should never be synced.
+        
+        Returns True for face_embedding, voice_embedding, raw_audio, person.
+        These data types are silently blocked from mesh sync — they never leave
+        the originating device.
+        """
+        return data_type in ("face_embedding", "voice_embedding", "raw_audio", "person")
+
+    def can_sync_memory(self, device_id: str, data_type: str | None = None) -> bool:
         """
         Can we sync memory to this device?
 
         Only TRUSTED mesh peers get memory sync.
+        Biometric data (face/voice embeddings) is never synced.
         """
+        if data_type and self.biometric_auto_restrict(data_type):
+            return False
+            
         if not self._is_mesh_peer(device_id):
             return False
         return self._is_trusted_peer(device_id)
@@ -81,13 +95,13 @@ class PrivacyGuard:
         """
         return self._is_mesh_peer(device_id)
 
-    def can_receive_data(self, device_id: str) -> bool:
+    def can_receive_data(self, device_id: str, data_type: str | None = None) -> bool:
         """
         Can this device receive our data (memories, secrets, etc.)?
 
-        Same as can_sync_memory — only trusted peers.
+        Same as can_sync_memory — only trusted peers, no biometric data.
         """
-        return self.can_sync_memory(device_id)
+        return self.can_sync_memory(device_id, data_type)
 
     def on_outbound_internet(self, data: dict, destination: str):
         """

@@ -16,7 +16,7 @@ class VisionMonitor:
     """
     Background monitor that watches the webcam and detects important changes.
     """
-    def __init__(self, camera_id: int | None = None, threshold: int | None = None):
+    def __init__(self, camera_id: int | None = None, threshold: int | None = None, xiang=None):
         config = get_config()
         vision_cfg = config.vision
         self.camera_id = camera_id if camera_id is not None else vision_cfg.camera_index
@@ -29,6 +29,7 @@ class VisionMonitor:
         self._important_frame = None
         self._thread = None
         self._last_event_time = 0.0
+        self._xiang = xiang
         
     def start(self):
         if self.running: return
@@ -109,6 +110,28 @@ class VisionMonitor:
                             ),
                             self._loop
                         )
+                        
+                        # Phase 2: People Recognition
+                        if self._xiang is not None:
+                            # Run face detection in asyncio loop
+                            async def _detect_faces():
+                                # identify_faces expects RGB frame
+                                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                                people = await self._xiang.identify_faces(frame_rgb)
+                                for p in people:
+                                    if p.name != "unknown":
+                                        logger.info(f"[Po] Recognized {p.name} with confidence {p.confidence:.2f}")
+                                        await fabric.publish(MessageType.PERSON_IDENTIFIED.value, {
+                                            "name": p.name,
+                                            "confidence": float(p.confidence)
+                                        })
+                                    else:
+                                        logger.info("[Po] Undetected person found")
+                                        await fabric.publish(MessageType.PERSON_DETECTED.value, {
+                                            "confidence": float(p.confidence)
+                                        })
+                            
+                            asyncio.run_coroutine_threadsafe(_detect_faces(), self._loop)
 
             self._last_frame = gray
             time.sleep(1.0 / get_config().vision.fps)
@@ -170,10 +193,16 @@ class Po:
     def __init__(self, start_vision_monitor: bool = True):
         self.config = get_config()
         
-        self.vision_engine = None
-        
         # Initialize Monitor
-        self.vision_monitor = VisionMonitor()
+        xiang = None
+        if start_vision_monitor:
+            try:
+                from velvet.shen.xiang import XiangEngine
+                xiang = XiangEngine()
+            except Exception as e:
+                logger.warning(f"[Po] Xiang init failed, recognition disabled: {e}")
+
+        self.vision_monitor = VisionMonitor(xiang=xiang)
         if start_vision_monitor:
             self.vision_monitor.start()
         else:

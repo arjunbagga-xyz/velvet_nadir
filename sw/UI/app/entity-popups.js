@@ -3,6 +3,7 @@
 // Uses the window manager (spawnPopup) to create independent windows.
 
 import { spawnPopup } from './window-manager.js';
+import { updateAgent } from './ws-bridge.js';
 
 // ── SVG Icons (inline, small) ──────────────────────────────
 const IC = {
@@ -117,8 +118,8 @@ export function openDevicePopup(device, ICONS) {
   const sensorBtns = (device.type === 'sensor' || device.type === 'hybrid') ? `
     ${section('Sensor Feeds', `
       <div style="display:flex;gap:8px;">
-        <button class="remote-ctrl-btn remote-ctrl-btn--positive" style="flex:0">${IC.camera}<span>Camera</span></button>
-        <button class="remote-ctrl-btn remote-ctrl-btn--positive" style="flex:0">${IC.mic}<span>Mic</span></button>
+        <button id="dev-btn-cam-${id}" class="remote-ctrl-btn remote-ctrl-btn--positive" style="flex:0">${IC.camera}<span>Camera</span></button>
+        <button id="dev-btn-mic-${id}" class="remote-ctrl-btn remote-ctrl-btn--positive" style="flex:0">${IC.mic}<span>Mic</span></button>
       </div>
     `)}
   ` : '';
@@ -143,7 +144,29 @@ export function openDevicePopup(device, ICONS) {
     ${remoteControl()}
   `;
 
-  spawnPopup({ id, title: device.name, typeLabel, width: 460, bodyHTML: body, icon: ICONS.cpu });
+  const popup = spawnPopup({ id, title: device.name, typeLabel, width: 460, bodyHTML: body, icon: ICONS.cpu });
+
+  // Wire Sensor Feed toggles
+  if (popup) {
+     const camBtn = popup.querySelector(`#dev-btn-cam-${id}`);
+     if (camBtn) {
+        camBtn.addEventListener('click', () => {
+           camBtn.classList.toggle('active');
+           const span = camBtn.querySelector('span');
+           span.innerText = camBtn.classList.contains('active') ? "Streaming..." : "Camera";
+           camBtn.style.background = camBtn.classList.contains('active') ? "var(--accent-glow)" : "";
+        });
+     }
+     const micBtn = popup.querySelector(`#dev-btn-mic-${id}`);
+     if (micBtn) {
+        micBtn.addEventListener('click', () => {
+           micBtn.classList.toggle('active');
+           const span = micBtn.querySelector('span');
+           span.innerText = micBtn.classList.contains('active') ? "Live" : "Mic";
+           micBtn.style.background = micBtn.classList.contains('active') ? "var(--accent-glow)" : "";
+        });
+     }
+  }
 }
 
 // ── Vehicle Popup ──────────────────────────────────────────
@@ -212,17 +235,15 @@ export function openAgentPopup(entity, ICONS) {
     <div class="popup-tab-content" data-tab="config">
       ${section('Identity', `
         ${kv('Agent ID', entity.agent_id || entity.name)}
-        <div class="popup-kv"><span class="popup-kv__key">Agent Type</span><input type="text" value="${entity.agent_type || 'general'}" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:0.8rem;width:140px;"></div>
-        <div class="popup-kv"><span class="popup-kv__key">Role</span><input type="text" value="${role}" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:0.8rem;width:140px;" placeholder="e.g. orchestrator, analyst"></div>
+        <div class="popup-kv"><span class="popup-kv__key">Agent Type</span><input type="text" id="ag-cfg-type-${id}" value="${entity.type || entity.agent_type || 'general'}" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:0.8rem;width:140px;"></div>
+        <div class="popup-kv"><span class="popup-kv__key">Role</span><input type="text" id="ag-cfg-role-${id}" value="${role}" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:0.8rem;width:140px;" placeholder="e.g. orchestrator, worker"></div>
       `)}
       ${section('Capabilities', `
         ${tags(entity.capabilities || [])}
-        <button class="remote-ctrl-btn remote-ctrl-btn--positive" style="flex:0;padding:6px 10px;font-size:0.7rem;"><span>+ Add Capability</span></button>
       `)}
-      ${section('Custom Fields', `
-        <div style="font-size:0.8rem;color:var(--text-muted);font-style:italic;">Custom fields coming in Sprint 11</div>
-        <button class="remote-ctrl-btn remote-ctrl-btn--positive" style="flex:0;padding:6px 10px;font-size:0.7rem;"><span>+ Add Field</span></button>
-      `)}
+      <div style="margin-top: 1rem; display: flex; justify-content: flex-end;">
+         <button id="ag-cfg-save-${id}" class="remote-ctrl-btn remote-ctrl-btn--positive" style="padding:6px 12px;font-size:0.8rem;">Save Changes</button>
+      </div>
     </div>
   `;
 
@@ -248,6 +269,18 @@ export function openAgentPopup(entity, ICONS) {
         if (target) target.classList.add('active');
       });
     });
+    
+    // Wire Save logic
+    const saveBtn = popup.querySelector(`#ag-cfg-save-${id}`);
+    if (saveBtn) {
+       saveBtn.addEventListener('click', () => {
+          const typeVal = popup.querySelector(`#ag-cfg-type-${id}`).value;
+          const roleVal = popup.querySelector(`#ag-cfg-role-${id}`).value;
+          updateAgent(entity.id || entity.agent_id || entity.name, { agent_type: typeVal, role: roleVal });
+          saveBtn.innerText = "Saved!";
+          setTimeout(() => { saveBtn.innerText = "Save Changes"; }, 2000);
+       });
+    }
   }
 }
 

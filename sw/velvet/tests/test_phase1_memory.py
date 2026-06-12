@@ -135,14 +135,14 @@ class TestPrivacyGuard:
             device_id="desktop-1",
             name="Desktop",
             device_type=DeviceType.COMPUTE,
-            trust_level=TrustLevel.TRUSTED,
+            initial_trust_level=TrustLevel.TRUSTED,
             status=DeviceStatus.ONLINE,
         )
         untrusted_device = Device(
             device_id="guest-cam",
             name="Guest Camera",
             device_type=DeviceType.SENSOR,
-            trust_level=TrustLevel.UNTRUSTED,
+            initial_trust_level=TrustLevel.UNTRUSTED,
             status=DeviceStatus.ONLINE,
         )
 
@@ -226,6 +226,7 @@ class TestJing:
         j = Jing.__new__(Jing)
         j._mem = self.mock_mem
         j._tartarus = ColdStore(str(self.tmp_path / "test_tartarus.db"))
+        j._kg = None  # MemPalace KG not available in unit tests
         j._ready = True
         return j
 
@@ -256,9 +257,28 @@ class TestJing:
 
     @pytest.mark.asyncio
     async def test_graph_query(self):
-        """Graph query should return relations."""
+        """Graph query should return empty when KG is not available."""
         jing = self._make_jing()
+        # With _kg = None, graph_query should gracefully return []
         results = await jing.graph_query("user preferences")
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_graph_query_with_kg(self, tmp_path):
+        """Graph query should return results when MemPalace KG is available."""
+        from velvet.shen.jing import Jing
+        try:
+            from mempalace.knowledge_graph import KnowledgeGraph
+        except ImportError:
+            pytest.skip("mempalace not installed")
+
+        jing = self._make_jing()
+        kg = KnowledgeGraph(db_path=str(tmp_path / "test_kg.sqlite3"))
+        kg.add_entity("User", entity_type="person")
+        kg.add_triple("User", "prefers", "dark_mode")
+        jing._kg = kg
+
+        results = await jing.graph_query("User")
         assert len(results) >= 1
 
     def test_is_persistent(self):
@@ -289,6 +309,7 @@ class TestJing:
         j = Jing.__new__(Jing)
         j._mem = None
         j._tartarus = None
+        j._kg = None
         j._ready = True
         results = await j.recall("test")
         assert results == []
@@ -341,5 +362,7 @@ class TestMemoryConfig:
         cfg.ensure_directories()
         assert cfg.memory.memory_db_path != ""
         assert cfg.memory.tartarus_db_path != ""
+        assert cfg.memory.graph_db_path != ""
+        assert "knowledge_graph.sqlite3" in cfg.memory.graph_db_path
         assert cfg.xi.journal_path != ""
         assert (tmp_path / "velvet_test" / "logs").exists()

@@ -1,0 +1,6 @@
+2026-06-11 12:20:06,485 - powermem - DEBUG - [00000000-0000-0000-0000-000000000000] [] [] - PowerMem SDK logging initialized (file=D:\Open Projects\seamless_computing\sw\velvet\logs\powermem.log)
+2026-06-11 12:20:06,511 - powermem.storage.sqlite.sqlite_vector_store - INFO - [00000000-0000-0000-0000-000000000000] [] [] - SQLiteVectorStore initialized with db_path: C:\Users\MSI\.velvet\memory.db
+2026-06-11 12:20:11,591 - powermem.storage.sqlite.sqlite_vector_store - INFO - [00000000-0000-0000-0000-000000000000] [] [] - SQLiteVectorStore initialized with db_path: C:\Users\MSI\.velvet\memory.db
+2026-06-11 12:20:15,746 - powermem.storage.sqlite.sqlite_vector_store - INFO - [00000000-0000-0000-0000-000000000000] [] [] - SQLiteVectorStore initialized with db_path: C:\Users\MSI\.velvet\memory.db
+2026-06-11 12:20:20,386 - powermem.storage.sqlite.sqlite_vector_store - INFO - [00000000-0000-0000-0000-000000000000] [] [] - SQLiteVectorStore initialized with db_path: C:\Users\MSI\.velvet\memory.db
+2026-06-11 12:20:24,567 - powermem.storage.sqlite.sqlite_vector_store - INFO - [00000000-0000-0000-0000-000000000000] [] [] - SQLiteVectorStore initialized with db_path: C:\Users\MSI\.velvet\memory.db

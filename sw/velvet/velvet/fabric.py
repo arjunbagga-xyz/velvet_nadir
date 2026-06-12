@@ -62,6 +62,7 @@ class MessageType(Enum):
     # Skills (routed through queue)
     SKILL_REQUEST = "skill/request"
     SKILL_RESPONSE = "skill/response"
+    SKILL_PENDING_APPROVAL = "skill/pending_approval"
     
     # Gateway control
     CANCEL_REQUEST = "gateway/cancel"
@@ -79,6 +80,26 @@ class MessageType(Enum):
     MESH_INFERENCE_REQUEST = "mesh/inference/request"
     MESH_INFERENCE_RESPONSE = "mesh/inference/response"
     MESH_INFERENCE_STREAM = "mesh/inference/stream"
+    
+    # Display Bridge
+    DISPLAY_CHAT_IN = "display/chat/in"
+    DISPLAY_CHAT_OUT = "display/chat/out"
+
+    # Basilisk Protocol (Secure P2P RPC)
+    BASILISK_RPC = "sys/basilisk/rpc"
+    BASILISK_AUTH = "sys/basilisk/auth"
+
+    # Vision person events
+    PERSON_DETECTED = "vision/person/detected"
+    PERSON_IDENTIFIED = "vision/person/identified"
+
+    # Context / Spatial
+    LOCATION_UPDATE = "context/location/update"
+    SPATIAL_FENCE_EVENT = "context/spatial/fence"
+
+    # Security
+    TRUST_CHANGE_REQUEST = "security/trust/request"
+    TRUST_CHANGE_VERIFIED = "security/trust/verified"
     
     # ── Future Capabilities ──────────────────────────────────────────────
     # Variants below are NOT currently wired in code.  They exist as
@@ -171,6 +192,34 @@ class VelvetMessage:
 MessageHandler = Callable[[VelvetMessage], Awaitable[None]]
 
 
+def match_pattern(pattern: str, topic: str) -> bool:
+    """Check if a topic matches a Zenoh-style pattern (supporting * and **)."""
+    import re
+    # Convert Zenoh pattern to python regex
+    # '**' matches any subpath (including '/')
+    # '*' matches a single path component (excluding '/')
+    regex_parts = []
+    i = 0
+    while i < len(pattern):
+        if pattern[i:i+2] == '**':
+            regex_parts.append('.*')
+            i += 2
+        elif pattern[i] == '*':
+            regex_parts.append('[^/]*')
+            i += 1
+        elif pattern[i] in '.+^$()[]{}|\\':
+            regex_parts.append('\\' + pattern[i])
+            i += 1
+        else:
+            regex_parts.append(pattern[i])
+            i += 1
+    regex_str = '^' + ''.join(regex_parts) + '$'
+    try:
+        return bool(re.match(regex_str, topic))
+    except Exception:
+        return False
+
+
 class ZenohFabric:
     """
     Zenoh-based communication fabric.
@@ -189,6 +238,8 @@ class ZenohFabric:
         self.mode = mode
         self.session: Any = None  # zenoh.Session
         self._subscribers: dict[str, Any] = {}
+        self._queryables: dict[str, Any] = {}
+        self._local_queryables: dict[str, Any] = {}
         self._handlers: dict[str, list[MessageHandler]] = {}
         self._running = False
         self._heartbeat_task: asyncio.Task | None = None
@@ -347,10 +398,14 @@ class ZenohFabric:
                         payload_bytes = bytes(sample.payload)
                         msg = VelvetMessage.from_bytes(payload_bytes)
                         
+                        # Avoid duplicate delivery of locally published messages
+                        if msg.source_device == self.device_id:
+                            return
+                            
                         # Schedule async handler on the event loop
                         if self._loop:
                             asyncio.run_coroutine_threadsafe(
-                                self._dispatch_local(topic_pattern, msg),
+                                self._dispatch_local(msg.msg_type, msg),
                                 self._loop
                             )
                     except Exception as e:
@@ -389,14 +444,17 @@ class ZenohFabric:
             except Exception as e:
                 logger.error(f"Error undeclaring subscriber {key}: {e}")
             
-    async def _dispatch_local(self, pattern: str, msg: VelvetMessage):
-        """Dispatch message to registered handlers."""
-        handlers = self._handlers.get(pattern, [])
-        for handler in handlers:
-            try:
-                await handler(msg)
-            except Exception as e:
-                logger.error(f"Handler error for {pattern}: {e}")
+    async def _dispatch_local(self, topic: str, msg: VelvetMessage):
+        """Dispatch message to registered handlers matching the topic."""
+        logger.info(f"[DispatchLocal] Dispatching topic: {topic} (Payload: {msg.payload}) to patterns: {list(self._handlers.keys())}")
+        for pattern, handlers in list(self._handlers.items()):
+            if pattern == topic or match_pattern(pattern, topic):
+                logger.info(f"[DispatchLocal] Matched pattern '{pattern}' for topic '{topic}'")
+                for handler in handlers:
+                    try:
+                        await handler(msg)
+                    except Exception as e:
+                        logger.error(f"Handler error for {pattern}: {e}")
                 
     def is_real_zenoh(self) -> bool:
         """Check if using real Zenoh or mock mode."""
@@ -411,6 +469,129 @@ class ZenohFabric:
             return [str(self.session.zid())]
         except Exception:
             return []
+
+    async def register_query_handler(self, topic: str, handler: Callable[[VelvetMessage], Awaitable[dict[str, Any] | None]]):
+        """Register a handler for incoming P2P RPC queries (declare Zenoh Queryable)."""
+        key = f"velvet/{topic}"
+        self._local_queryables[topic] = handler
+        
+        if self._use_real_zenoh and self.session:
+            try:
+                def on_query(query):
+                    """Callback from Zenoh (runs in Zenoh thread)."""
+                    try:
+                        import time
+                        # Extract query payload
+                        payload_bytes = bytes(query.value.payload) if query.value else b""
+                        if payload_bytes:
+                            msg = VelvetMessage.from_bytes(payload_bytes)
+                        else:
+                            msg = VelvetMessage(msg_type=topic, payload={}, source_device="")
+                        
+                        # Execute async handler on the event loop
+                        async def run_and_reply():
+                            try:
+                                response_payload = await handler(msg)
+                                if response_payload is None:
+                                    response_payload = {}
+                                response_msg = VelvetMessage(
+                                    msg_type=f"{topic}/reply",
+                                    payload=response_payload,
+                                    source_device=self.device_id,
+                                    correlation_id=msg.correlation_id
+                                )
+                                response_bytes = response_msg.to_bytes()
+                                
+                                # Send reply back via Zenoh query
+                                sample = zenoh.Sample(key, response_bytes)
+                                query.reply(sample)
+                            except Exception as reply_err:
+                                logger.error(f"Error executing query handler/reply: {reply_err}")
+                                
+                        if self._loop:
+                            asyncio.run_coroutine_threadsafe(run_and_reply(), self._loop)
+                            
+                    except Exception as query_err:
+                        logger.error(f"Error in on_query: {query_err}")
+                        
+                # Declare queryable in executor
+                queryable = self._loop.call_soon_threadsafe(
+                    lambda: self.session.declare_queryable(key, on_query)
+                )
+                self._queryables[key] = queryable
+                logger.info(f"Registered secure RPC queryable for {key}")
+                
+            except Exception as e:
+                logger.error(f"Failed to declare Zenoh queryable for {key}: {e}")
+        else:
+            logger.info(f"Registered local-only queryable for {topic}")
+
+    async def request(self, topic: str, payload: dict[str, Any], timeout_sec: float = 5.0) -> list[VelvetMessage]:
+        """Send a Point-to-Point secure query to a remote topic (The Basilisk Protocol)."""
+        key = f"velvet/{topic}"
+        msg = VelvetMessage(
+            msg_type=topic,
+            payload=payload,
+            source_device=self.device_id
+        )
+        data = msg.to_bytes()
+        responses = []
+        
+        if self._use_real_zenoh and self.session:
+            try:
+                import time
+                # Send query and wait for replies
+                # We use a Queue to collect replies in the Zenoh thread and read them in asyncio
+                reply_queue = asyncio.Queue()
+                
+                def on_reply(reply):
+                    try:
+                        sample = reply.sample
+                        reply_bytes = bytes(sample.payload)
+                        reply_msg = VelvetMessage.from_bytes(reply_bytes)
+                        if self._loop:
+                            self._loop.call_soon_threadsafe(reply_queue.put_nowait, reply_msg)
+                    except Exception as reply_err:
+                        logger.error(f"Error in on_reply: {reply_err}")
+                
+                # Run Zenoh get in executor
+                logger.debug(f"Sending Zenoh query for {key}")
+                await self._loop.run_in_executor(
+                    None, lambda: self.session.get(key, on_reply, value=data)
+                )
+                
+                # Wait for replies with a timeout
+                start_time = time.time()
+                while time.time() - start_time < timeout_sec:
+                    try:
+                        # Wait for a reply from the queue
+                        reply_msg = await asyncio.wait_for(reply_queue.get(), timeout=1.0)
+                        responses.append(reply_msg)
+                    except asyncio.TimeoutError:
+                        break
+                        
+            except Exception as e:
+                logger.error(f"Zenoh query request failed for {key}: {e}")
+        else:
+            # Mock / Local query fallback
+            if topic in self._local_queryables:
+                handler = self._local_queryables[topic]
+                try:
+                    resp_payload = await handler(msg)
+                    if resp_payload is not None:
+                        resp_msg = VelvetMessage(
+                            msg_type=f"{topic}/reply",
+                            payload=resp_payload,
+                            source_device=self.device_id
+                        )
+                        responses.append(resp_msg)
+                except Exception as local_err:
+                    logger.error(f"Error running local mock queryable for {topic}: {local_err}")
+                    
+        return responses
+
+# Alias for compatibility with DISPLAY Bridge
+CommunicationFabric = ZenohFabric
 
 
 # Singleton fabric instance

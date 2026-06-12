@@ -56,6 +56,18 @@ class AgentIdentity:
     capabilities: list[str] = field(default_factory=list)
     parent_id: str | None = None            # Supervisor's agent_id
     custom_fields: dict = field(default_factory=dict)  # Extensible config (UI agent tab)
+    
+    # Runtime state (mutable)
+    current_task: str = ""                    # "Orchestrating daily schedule"
+    status: str = "idle"                      # "active" | "idle" | "error"
+    
+    @property
+    def trust_level(self) -> str:
+        """Agents inherit trust from their hierarchy position."""
+        if self.role == AgentRole.ORCHESTRATOR:
+            return "trusted"
+        return "trusted"  # All registered agents are implicitly trusted
+
 
 
 @dataclass
@@ -158,6 +170,10 @@ class AgentOrchestrator:
         """Get all agents with a specific role."""
         return [a for a in self._agents.values() if a.role == role]
 
+    def get_all(self) -> list[AgentIdentity]:
+        """Get all registered agent identities."""
+        return list(self._agents.values())
+
     def get_children(self, parent_id: str) -> list[AgentIdentity]:
         """Get all agents whose parent is the given agent."""
         return [a for a in self._agents.values() if a.parent_id == parent_id]
@@ -169,3 +185,34 @@ class AgentOrchestrator:
     @property
     def channel_count(self) -> int:
         return len(self._channels)
+
+    # --- Runtime State and Configuration Mutation (UI / Bridge driven) ---
+    def update_agent_task(self, agent_id: str, task: str, status: str = "active") -> bool:
+        """Update an agent's current runtime task and status."""
+        agent = self.get_agent(agent_id)
+        if not agent:
+            return False
+        agent.current_task = task
+        agent.status = status
+        logger.debug(f"[AgentOrchestrator] Updated {agent_id} state: {status} | task: {task}")
+        return True
+
+    def update_agent_config(self, agent_id: str, **fields) -> bool:
+        """Update an agent's configuration fields dynamically."""
+        agent = self.get_agent(agent_id)
+        if not agent:
+            return False
+            
+        allowed_fields = {"agent_type", "role", "capabilities", "custom_fields"}
+        for k, v in fields.items():
+            if k in allowed_fields:
+                if k == "role" and isinstance(v, str):
+                    try:
+                        agent.role = AgentRole(v)
+                    except ValueError:
+                        pass
+                else:
+                    setattr(agent, k, v)
+                    
+        logger.info(f"[AgentOrchestrator] Updated {agent_id} config: {list(fields.keys())}")
+        return True

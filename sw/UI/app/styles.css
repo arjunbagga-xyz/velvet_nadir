@@ -404,6 +404,52 @@ input {
   display: flex;
 }
 
+/* ── Bridge Connection Status Badge ─────────────────────── */
+.bridge-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  margin-left: 4px;
+}
+
+.bridge-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.bridge-status--offline .bridge-status__dot {
+  background: var(--warning);
+  box-shadow: 0 0 6px var(--warning);
+}
+
+.bridge-status--offline .bridge-status__label {
+  color: var(--warning);
+}
+
+.bridge-status--live .bridge-status__dot {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+  animation: bridge-pulse 2s ease-in-out infinite;
+}
+
+.bridge-status--live .bridge-status__label {
+  color: var(--success);
+}
+
+@keyframes bridge-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--success); }
+  50% { opacity: 0.5; box-shadow: 0 0 16px var(--success); }
+}
+
 /* ── Add Context/Project Dropdown ──────────────────────── */
 .add-dropdown {
   display: none;

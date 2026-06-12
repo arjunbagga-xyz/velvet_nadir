@@ -33,7 +33,7 @@ __all__ = [
 ]
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, InitVar
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Awaitable
@@ -303,6 +303,7 @@ class DeviceLoad:
     gpu_load: float = 0.0
     vram_free_gb: float = 0.0
     active_tasks: int = 0
+    battery_percent: float | None = None  # None = mains powered
     measured_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
@@ -312,6 +313,7 @@ class DeviceLoad:
             "gpu_load": self.gpu_load,
             "vram_free_gb": self.vram_free_gb,
             "active_tasks": self.active_tasks,
+            "battery_percent": self.battery_percent,
             "measured_at": self.measured_at.isoformat(),
         }
 
@@ -323,6 +325,7 @@ class DeviceLoad:
             gpu_load=data.get("gpu_load", 0.0),
             vram_free_gb=data.get("vram_free_gb", 0.0),
             active_tasks=data.get("active_tasks", 0),
+            battery_percent=data.get("battery_percent"),
             measured_at=datetime.fromisoformat(data["measured_at"]) if "measured_at" in data else datetime.now(timezone.utc),
         )
 
@@ -334,7 +337,7 @@ class Device:
     name: str
     device_type: DeviceType
     role: DeviceRole = DeviceRole.HOST
-    trust_level: TrustLevel = TrustLevel.TRUSTED
+    initial_trust_level: InitVar[TrustLevel] = TrustLevel.TRUSTED
     manager_id: str | None = None  # If PERIPHERAL, which HOST manages it
     hardware: HardwareSpecs = field(default_factory=HardwareSpecs)
     software: SoftwareSpecs = field(default_factory=SoftwareSpecs)
@@ -347,6 +350,38 @@ class Device:
     last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     registered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict = field(default_factory=dict)
+    
+    _trust_level: TrustLevel = field(default=TrustLevel.TRUSTED, init=False, repr=False)
+    
+    def __post_init__(self, initial_trust_level: TrustLevel):
+        self._trust_level = initial_trust_level
+    
+    @property
+    def trust_level(self) -> TrustLevel:
+        return self._trust_level
+        
+    @trust_level.setter
+    def trust_level(self, value: TrustLevel):
+        from velvet.errors import TrustGateError
+        raise TrustGateError(
+            "Direct trust_level assignment is blocked. "
+            "Use TrustGate.request_trust_change() instead."
+        )
+        
+    def _set_trust_level_internal(self, value: TrustLevel):
+        """Called ONLY by TrustGate after biometric verification."""
+        self._trust_level = value
+        
+    @property
+    def display_type(self) -> str:
+        """Get the type string used by the UI components.
+        Maps DeviceType to UI types, synthesizing 'hybrid' if needed.
+        """
+        # If it's a compute device (can run inference) AND has a camera/mic, it's hybrid (like a Phone or Smart Glasses)
+        has_sensors = self.hardware.has_camera or self.hardware.has_microphone
+        if self.is_compute() and has_sensors and self.device_type not in (DeviceType.ROBOT, DeviceType.VEHICLE):
+            return "hybrid"
+        return self.device_type.value
     
     def is_compute(self) -> bool:
         """Check if device can run inference."""
@@ -392,7 +427,7 @@ class Device:
             name=data["name"],
             device_type=DeviceType(data["device_type"]),
             role=DeviceRole(data.get("role", "host")),
-            trust_level=TrustLevel(data.get("trust_level", "trusted")),
+            initial_trust_level=TrustLevel(data.get("trust_level", "trusted")),
             manager_id=data.get("manager_id"),
             hardware=HardwareSpecs.from_dict(data.get("hardware", {})),
             software=SoftwareSpecs.from_dict(data.get("software", {})),

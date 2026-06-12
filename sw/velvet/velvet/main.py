@@ -19,9 +19,10 @@ import asyncio
 import sys
 from pathlib import Path
 from loguru import logger
+from datetime import datetime
 
 from .config import get_config, load_config
-from .fabric import init_fabric, get_fabric
+from .fabric import init_fabric, get_fabric, MessageType
 from .context import init_context_manager, get_context_manager
 from .skills import get_skill_registry
 from .gateway import init_gateway, get_gateway, Gateway
@@ -222,11 +223,62 @@ async def start_velvet(
         )
         await gateway.start()
         
+        # Intelligence Subsystems (Sprints 13 & 14)
+        jing = None  # Pre-declare so DisplayBridge can reference it safely
+        try:
+            from .shen.jing import Jing
+            from .shen.xiang import XiangEngine
+            from .trust_gate import TrustGate
+            from .shen.locus import LocusEngine
+            
+            # 1. Jing (Memory)
+            jing = Jing()
+            
+            # 2. Xiang (Perception)
+            xiang = XiangEngine(jing=jing)
+            
+            # 3. TrustGate (Security) - Now with biometric engine
+            trust_gate = TrustGate(xiang=xiang)
+            
+            # 4. Locus (Spatial)
+            locus = LocusEngine()
+            ctx_mgr.set_locus_engine(locus)
+            
+            # 5. Register Basilisk Protocol handlers
+            await fabric.register_query_handler(
+                MessageType.BASILISK_AUTH.value,
+                trust_gate.handle_basilisk_auth
+            )
+            
+            logger.info("Intelligence subsystems (TrustGate, Xiàng, Locus) + Basilisk Protocol started")
+        except Exception as e:
+            logger.error(f"Failed to start intelligence subsystems: {e}")
+        
         # Import and register skills (only needed if Gateway is running)
         from .example_skills import builtin  # noqa: F401 - imports register skills
         from . import onboarding  # Registers scan/onboard skills
         from .skills import vision_skill # noqa: F401
         from .skills import network_ops # noqa: F401 - Registers scan/deploy skills
+        from .skills import basilisk_skill # noqa: F401 - Registers Basilisk Protocol skills
+        
+        # 6. Display UI Bridge (Sprint 14)
+        if config.display.enabled:
+            # We fetch locus from context manager so it's safely available even if block fails
+            try:
+                from .display import DisplayBridge
+                display_bridge = DisplayBridge(
+                    config=config.display,
+                    fabric=fabric,
+                    registry=registry,
+                    context=ctx_mgr,
+                    agents=gateway.agent_orchestrator,
+                    locus=getattr(ctx_mgr, 'locus', None), # Provide locus if attached to ctx_mgr
+                    jing=jing  # Jing for memory graph + search
+                )
+                await display_bridge.start()
+                logger.info("Display Bridge started")
+            except Exception as e:
+                logger.error(f"Failed to start Display Bridge: {e}")
     
     logger.info("Velvet Nadir started successfully")
     return gateway

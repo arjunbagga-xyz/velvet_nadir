@@ -68,6 +68,50 @@ class ContextTrack:
         }
 
 
+@dataclass
+class ContextWorkspace:
+    """A rich workspace container displayed in the mesh view.
+    
+    Two types:
+    - Context: perpetual, always-on domain (e.g. Personal, Maintenance)
+    - Project: goal-driven with progress tracking and an end state
+    
+    Wraps a ContextTrack and adds entity relationships, progress,
+    artifacts, and hierarchy for the UI.
+    """
+    workspace_id: str                             # Unique, e.g. "ws_personal_001"
+    name: str                                      # "Personal Context"
+    track_type: TrackType                          # Links to existing track system
+    subtype: str = "context"                       # "context" | "project"
+    status: str = "active"                         # Derived from EngagementLevel
+    progress: float = 0.0                          # 0-100, ONLY for project subtype
+    
+    # Hierarchy
+    parent_id: str | None = None                   # Parent workspace ID (for nesting)
+    
+    # Entity references (by ID, not embedded)
+    agent_ids: list[str] = field(default_factory=list)     # AgentIdentity refs
+    human_ids: list[str] = field(default_factory=list)     # Human entity refs  
+    device_ids: list[str] = field(default_factory=list)    # Device refs (replaces "hardware")
+    robot_ids: list[str] = field(default_factory=list)     # Robot device refs
+    
+    artifacts: list[str] = field(default_factory=list)     # Artifact names/IDs
+    
+    # UI layout state (optional, persisted for consistent positioning)
+    ui_position: dict = field(default_factory=dict)        # {"x": 200, "y": 300}
+    
+    metadata: dict = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @property
+    def is_project(self) -> bool:
+        return self.subtype == "project"
+    
+    @property
+    def is_complete(self) -> bool:
+        return self.is_project and self.progress >= 100.0
+
+
 @dataclass 
 class WorkingMemory:
     """Short-term working memory for current session."""
@@ -120,6 +164,7 @@ class ContextManager:
     
     def __init__(self, enabled_tracks: list[str] | None = None):
         self.tracks: dict[TrackType, ContextTrack] = {}
+        self.workspaces: dict[str, ContextWorkspace] = {}
         self.working_memory = WorkingMemory()
         self.global_engagement = EngagementLevel.MONITORING
         self._lock = asyncio.Lock()
@@ -131,11 +176,58 @@ class ContextManager:
             if track_type.value in enabled:
                 self.tracks[track_type] = ContextTrack(track_type=track_type)
                 
+        # Initialize default workspaces
+        self._init_default_workspaces()
+                
         logger.info(f"Context manager initialized with tracks: {list(self.tracks.keys())}")
+        
+    def _init_default_workspaces(self):
+        """Initialize the default user workspaces."""
+        if TrackType.PERSONAL in self.tracks:
+            ws_personal = ContextWorkspace(
+                workspace_id="ws_personal_default",
+                name="Personal",
+                track_type=TrackType.PERSONAL,
+                subtype="context"
+            )
+            self.workspaces[ws_personal.workspace_id] = ws_personal
+            
+        if TrackType.AGENT in self.tracks:  # Using AGENT track for Maintenance as closest fit
+            ws_maint = ContextWorkspace(
+                workspace_id="ws_maintenance_default",
+                name="System Maintenance",
+                track_type=TrackType.AGENT,
+                subtype="context"
+            )
+            self.workspaces[ws_maint.workspace_id] = ws_maint
         
     def set_persistence(self, memory):
         """Set the persistence backend (PersistentMemory instance)."""
         self._persistence = memory
+        
+    def set_locus_engine(self, locus):
+        """Attach the Locus spatial engine."""
+        self._locus = locus
+        
+    def get_location(self, device_id: str) -> dict | None:
+        """Get the current spatial location and geofence state of a device."""
+        if not hasattr(self, "_locus") or not self._locus:
+            return None
+        loc = self._locus.get_device_location(device_id)
+        if not loc:
+            return None
+        fences = self._locus.get_current_fences(loc.lat, loc.lon)
+        return {
+            "lat": loc.lat,
+            "lon": loc.lon,
+            "accuracy": loc.accuracy_meters,
+            "fences": fences
+        }
+        
+    def merge_tracks(self) -> None:
+        """Phase 3: Merge overlapping spatial/personal context tracks."""
+        # Stub for context track merging
+        pass
         
     async def load_from_storage(self) -> bool:
         """Load context tracks from persistent storage."""
@@ -226,6 +318,45 @@ class ContextManager:
                     context["tracks"][track_type.value] = track.to_dict()
                     
             return context
+            
+    # --- Workspace CRUD (UI / Network Bridge driven) ---
+    
+    async def create_workspace(self, name: str, track_type: TrackType, subtype: str = "context", parent_id: str | None = None) -> ContextWorkspace:
+        """Create a new custom workspace container. (User-initiated only)."""
+        import uuid
+        ws_id = f"ws_custom_{uuid.uuid4().hex[:8]}"
+        ws = ContextWorkspace(
+            workspace_id=ws_id,
+            name=name,
+            track_type=track_type,
+            subtype=subtype,
+            parent_id=parent_id
+        )
+        async with self._lock:
+            self.workspaces[ws_id] = ws
+        logger.info(f"Created custom workspace: {name} ({subtype})")
+        return ws
+        
+    async def delete_workspace(self, workspace_id: str) -> bool:
+        """Delete a custom workspace. Cannot delete default workspaces."""
+        if workspace_id in ("ws_personal_default", "ws_maintenance_default"):
+            logger.warning(f"Attempted to delete protected default workspace: {workspace_id}")
+            return False
+            
+        async with self._lock:
+            if workspace_id in self.workspaces:
+                del self.workspaces[workspace_id]
+                logger.info(f"Deleted workspace: {workspace_id}")
+                return True
+        return False
+        
+    def get_workspace(self, workspace_id: str) -> ContextWorkspace | None:
+        """Get a workspace by ID."""
+        return self.workspaces.get(workspace_id)
+        
+    def get_all_workspaces(self) -> list[ContextWorkspace]:
+        """Get all active workspaces."""
+        return list(self.workspaces.values())
             
     async def build_llm_context(self, max_tokens: int = 2000) -> str:
         """Build a context summary string for LLM consumption."""

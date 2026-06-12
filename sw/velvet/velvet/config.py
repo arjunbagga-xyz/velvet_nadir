@@ -12,9 +12,13 @@ __all__ = [
     "ContextConfig",
     "StorageConfig",
     "GatewayConfig",
-    "MemoryConfig",
     "XiConfig",
     "VisionConfig",
+    "TrustGateConfig",
+    "XiangConfig",
+    "LocusConfig",
+    "BasiliskConfig",
+    "DisplayConfig",
     "VelvetConfig",
     "get_config",
     "load_config",
@@ -56,10 +60,21 @@ class SecurityConfig(BaseSettings):
     """Mesh-wide security policy."""
     model_config = SettingsConfigDict(env_prefix="VELVET_SECURITY_")
     
-    allow_google_adapter: bool = False        # Explicit opt-in for cloud LLM
+    allow_cloud_adapters: bool = False        # Explicit opt-in for cloud LLMs
+    allow_google_adapter: bool = False        # Deprecated alias
     mesh_secret: str = ""                     # Shared secret for HMAC message signing
     require_signed_messages: bool = True      # HMAC on VelvetMessage (default: on)
     certs_dir: str = "~/.velvet/certs"        # TLS certificate storage directory
+
+    def model_post_init(self, __context):
+        if self.allow_google_adapter and not self.allow_cloud_adapters:
+            import warnings
+            warnings.warn(
+                "VELVET_SECURITY_ALLOW_GOOGLE_ADAPTER is deprecated. "
+                "Use VELVET_SECURITY_ALLOW_CLOUD_ADAPTERS instead.",
+                DeprecationWarning, stacklevel=2
+            )
+            self.allow_cloud_adapters = True
 
 
 class AudioConfig(BaseSettings):
@@ -167,8 +182,9 @@ class MemoryConfig(BaseSettings):
     memory_db_path: str = ""             # Default: ~/.velvet/memory.db
     tartarus_db_path: str = ""           # Default: ~/.velvet/tartarus.db
 
-    # Graph store
+    # Graph store (MemPalace KnowledgeGraph — local SQLite temporal KG)
     graph_enabled: bool = True
+    graph_db_path: str = ""               # Default: ~/.velvet/knowledge_graph.sqlite3
 
     # Intelligent memory (Ebbinghaus)
     decay_rate: float = 0.1
@@ -209,6 +225,56 @@ class VisionConfig(BaseSettings):
     log_level: str = "DEBUG"            # "DEBUG" or "INFO" for motion events
 
 
+class TrustGateConfig(BaseSettings):
+    """Biometric trust gate settings."""
+    model_config = SettingsConfigDict(env_prefix="VELVET_TRUST_GATE_")
+    
+    require_biometric: bool = True          # Require face/voice for trust changes
+    verification_timeout_sec: int = 300     # Time window for biometric verification
+    owner_face_memory_key: str = "owner"    # Jing key for owner's face embedding
+
+
+class XiangConfig(BaseSettings):
+    """Xiàng (相) — People recognition settings."""
+    model_config = SettingsConfigDict(env_prefix="VELVET_XIANG_")
+    
+    enabled: bool = False
+    face_model: str = "facenet"
+    voice_model: str = "resemblyzer"
+    recognition_threshold: float = 0.7
+    memory_type_tag: str = "person"         # Tag used in Jing for person memories
+
+
+class LocusConfig(BaseSettings):
+    """Locus — Spatial awareness settings."""
+    model_config = SettingsConfigDict(env_prefix="VELVET_LOCUS_")
+    
+    enabled: bool = False
+    seed_fences: list[dict] = []            # Optional initial known locations
+    location_poll_interval_sec: int = 30
+    cluster_min_visits: int = 5             # Visits before a cluster becomes a fence
+    merge_on_enter: bool = True             # Auto-merge context tracks on geofence enter
+
+
+class BasiliskConfig(BaseSettings):
+    """The Basilisk Protocol settings for ephemeral P2P secure RPC."""
+    model_config = SettingsConfigDict(env_prefix="VELVET_BASILISK_")
+    
+    enabled: bool = True
+    rpc_timeout_sec: float = 5.0
+    memory_isolation_mode: Literal["logical", "explicit"] = "logical"
+
+
+class DisplayConfig(BaseSettings):
+    """Dashboard UI and WebSocket Bridge."""
+    model_config = SettingsConfigDict(env_prefix="VELVET_DISPLAY_")
+    
+    enabled: bool = True
+    http_port: int = 8765
+    http_host: str = "0.0.0.0"      # Bound to mesh network interface
+    dashboard_path: str = ""        # Auto-resolved if empty
+
+
 class VelvetConfig(BaseSettings):
     """Main configuration aggregating all subsystems."""
     model_config = SettingsConfigDict(
@@ -228,6 +294,11 @@ class VelvetConfig(BaseSettings):
     vision: VisionConfig = Field(default_factory=VisionConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     xi: XiConfig = Field(default_factory=XiConfig)
+    trust_gate: TrustGateConfig = Field(default_factory=TrustGateConfig)
+    xiang: XiangConfig = Field(default_factory=XiangConfig)
+    locus: LocusConfig = Field(default_factory=LocusConfig)
+    basilisk: BasiliskConfig = Field(default_factory=BasiliskConfig)
+    display: DisplayConfig = Field(default_factory=DisplayConfig)
     
     # Global settings
     debug: bool = False
@@ -251,6 +322,8 @@ class VelvetConfig(BaseSettings):
             self.memory.memory_db_path = str(self.storage.data_dir / "memory.db")
         if not self.memory.tartarus_db_path:
             self.memory.tartarus_db_path = str(self.storage.data_dir / "tartarus.db")
+        if not self.memory.graph_db_path:
+            self.memory.graph_db_path = str(self.storage.data_dir / "knowledge_graph.sqlite3")
         if not self.xi.journal_path:
             self.xi.journal_path = str(self.storage.data_dir / "xi_journal.jsonl")
         

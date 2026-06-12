@@ -272,13 +272,13 @@ class TestDeviceWatchdog:
         trusted = Device(
             device_id="desktop", name="Desktop",
             device_type=DeviceType.COMPUTE,
-            trust_level=TrustLevel.TRUSTED,
+            initial_trust_level=TrustLevel.TRUSTED,
             status=DeviceStatus.ONLINE,
         )
         untrusted = Device(
             device_id="guest", name="Guest Camera",
             device_type=DeviceType.SENSOR,
-            trust_level=TrustLevel.UNTRUSTED,
+            initial_trust_level=TrustLevel.UNTRUSTED,
             status=DeviceStatus.ONLINE,
         )
 

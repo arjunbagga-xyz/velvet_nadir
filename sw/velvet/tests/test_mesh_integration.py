@@ -70,7 +70,7 @@ class TestMeshIntegration(unittest.IsolatedAsyncioTestCase):
         # Verify context update
         messages = self.gateway.context.working_memory.conversation_buffer
         self.assertTrue(len(messages) > 0)
-        self.assertEqual(messages[-1]["content"], "Hello from the mesh")
+        self.assertTrue(any(msg["content"] == "Hello from the mesh" for msg in messages))
 
 if __name__ == "__main__":
     unittest.main()

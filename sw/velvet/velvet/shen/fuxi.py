@@ -79,6 +79,9 @@ class Fuxi(BreathTask):
 
         # 2. Identify skill patterns for Po reflex learning
         await self._learn_patterns(batch)
+        
+        # 3. Reinforce person memories
+        await self._reinforce_people(batch)
 
     async def _learn_patterns(self, batch: list[ConversationTurn]):
         """Identify repeated skill usage patterns for Po reflex learning."""
@@ -109,6 +112,28 @@ class Fuxi(BreathTask):
                         )
                 except Exception as e:
                     logger.error(f"[Fuxi] Reflex learning failed: {e}")
+
+    async def _reinforce_people(self, batch: list[ConversationTurn]):
+        """Reinforce the memories of people involved in the conversation."""
+        jing = self._get_jing()
+        if not jing:
+            return
+            
+        people_found = set()
+        for turn in batch:
+            # Look for explicit speaker info in params (added by routing/vision)
+            speaker = turn.params.get("speaker", turn.params.get("user"))
+            if speaker and speaker != "unknown":
+                people_found.add(speaker)
+                
+        for person_name in people_found:
+            try:
+                # Ebbinghaus reinforcement by re-remembering the same fact
+                text = f"Known person identity: {person_name}"
+                await jing.remember(text, role="system", metadata={"type": "person", "name": person_name})
+                logger.info(f"[Fuxi] Reinforced person memory for: {person_name}")
+            except Exception as e:
+                logger.error(f"[Fuxi] Failed to reinforce person memory: {e}")
 
     def _get_jing(self):
         """Lazy-load Jing."""

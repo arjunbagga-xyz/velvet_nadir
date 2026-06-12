@@ -425,13 +425,9 @@ class Polymath:
             },
         }
 
-        # Graph store (optional, mesh-routed LLM for entity extraction)
-        if mem.graph_enabled:
-            config["graph_store"] = {
-                "enabled": True,
-                "provider": "sqlite",
-                "llm": llm_cfg,
-            }
+        # Graph store: handled by MemPalace KnowledgeGraph in Jing directly.
+        # PowerMem's GraphStoreFactory only supports 'oceanbase' — not viable for
+        # local-first. See NOTES_MEMPALACE_FUTURE.md for architecture context.
 
         # Query rewrite
         if mem.query_rewrite_enabled:
@@ -472,18 +468,164 @@ class Polymath:
         }
 
     def _resolve_memory_embedding_provider(self, model: str) -> dict:
-        """Resolve the best embedding provider for memory (mesh-aware)."""
+        """
+        Self-healing embedding provider resolution.
+        
+        Waterfall (local-first, cloud as last resort):
+        1. Ollama (if daemon is running and model available)
+        2. vLLM (if /v1/embeddings endpoint responds)
+        3. ONNX default (zero-dependency fallback, always works)
+        4. Cloud embedding (if allow_cloud_adapters=true and API key present)
+           — NVIDIA NIM or Google Gemini embedding endpoints
+        """
         from velvet.config import get_config
         cfg = get_config()
-
-        # Ollama embeddings — works with mxbai-embed-large, nomic-embed-text, etc.
+        
+        # 1. Try Ollama (local)
+        if self._probe_ollama(cfg.llm.base_url, model):
+            logger.info(f"[Polymath] Embedding: Ollama ({model})")
+            return {
+                "provider": "ollama",
+                "config": {
+                    "model": model,
+                    "ollama_base_url": cfg.llm.base_url,
+                }
+            }
+        
+        # 2. Try vLLM embedding endpoint (local)
+        vllm_url = getattr(cfg.llm, 'vllm_base_url', 'http://localhost:8000')
+        if self._probe_vllm_embeddings(vllm_url):
+            logger.info(f"[Polymath] Embedding: vLLM ({vllm_url})")
+            return {
+                "provider": "openai",  # vLLM uses OpenAI-compatible API
+                "config": {
+                    "model": model,
+                    "openai_base_url": f"{vllm_url}/v1",
+                }
+            }
+        
+        # 3. ONNX fallback (local, zero deps)
+        # Try ONNX first — if it works, prefer it over cloud
+        try:
+            # Quick sanity check: can we import the ONNX provider?
+            from powermem.integrations.embeddings.pyseekdb_default import PyseekdbDefaultEmbedding
+            logger.info("[Polymath] Embedding: ONNX default (all-MiniLM-L6-v2, 384d)")
+            return {
+                "provider": "default",
+                "config": {
+                    "model": "all-MiniLM-L6-v2",
+                    "embedding_dims": 384,
+                }
+            }
+        except ImportError:
+            logger.warning("[Polymath] ONNX default embedder unavailable")
+        
+        # 4. Cloud embedding (only if security gate allows it)
+        cloud_cfg = self._resolve_cloud_embedding(cfg)
+        if cloud_cfg:
+            return cloud_cfg
+        
+        # 5. Absolute last resort — ONNX without import check
+        logger.warning("[Polymath] All probes failed. Falling back to ONNX default.")
         return {
-            "provider": "ollama",
+            "provider": "default",
             "config": {
-                "model": model,
-                "ollama_base_url": cfg.llm.base_url,
+                "model": "all-MiniLM-L6-v2",
+                "embedding_dims": 384,
             }
         }
+
+    def _resolve_cloud_embedding(self, cfg) -> dict | None:
+        """
+        Try cloud embedding providers, respecting security gate.
+        
+        Only called when ALL local providers have failed.
+        Uses PowerMem's built-in OpenAI-compatible and Gemini embedding classes.
+        """
+        import os
+        
+        # Backward-compatible check for allow_cloud_adapters or old allow_google_adapter
+        allow_cloud = getattr(cfg.security, 'allow_cloud_adapters', False) or getattr(cfg.security, 'allow_google_adapter', False)
+        if not allow_cloud:
+            logger.info("[Polymath] Cloud embeddings blocked by security policy")
+            return None
+        
+        # 4a. NVIDIA NIM /v1/embeddings (OpenAI-compatible)
+        nvidia_key = os.environ.get("VELVET_LLM_NVIDIA_API_KEY")
+        if nvidia_key:
+            logger.info("[Polymath] Embedding: NVIDIA NIM (cloud, OpenAI-compat)")
+            return {
+                "provider": "openai",
+                "config": {
+                    "model": "nvidia/nv-embedqa-e5-v5",
+                    "openai_base_url": "https://integrate.api.nvidia.com/v1",
+                    "api_key": nvidia_key,
+                    "embedding_dims": 1024,
+                    "pass_dimensions": False,  # NIM may not support dim override
+                }
+            }
+        
+        # 4b. Google Gemini embedding
+        google_key = os.environ.get("VELVET_LLM_GOOGLE_API_KEY")
+        if google_key:
+            logger.info("[Polymath] Embedding: Google Gemini (cloud)")
+            return {
+                "provider": "gemini",
+                "config": {
+                    "model": "models/text-embedding-004",
+                    "api_key": google_key,
+                    "embedding_dims": 768,
+                }
+            }
+        
+        # 4c. OpenRouter /v1/embeddings (OpenAI-compatible)
+        openrouter_key = os.environ.get("VELVET_LLM_OPENROUTER_API_KEY")
+        if openrouter_key:
+            logger.info("[Polymath] Embedding: OpenRouter (cloud, OpenAI-compat)")
+            return {
+                "provider": "openai",
+                "config": {
+                    "model": "openai/text-embedding-3-small",
+                    "openai_base_url": "https://openrouter.ai/api/v1",
+                    "api_key": openrouter_key,
+                    "embedding_dims": 1536,
+                }
+            }
+        
+        logger.info("[Polymath] Cloud adapters enabled but no API keys found")
+        return None
+
+    def _probe_ollama(self, base_url: str, model: str) -> bool:
+        """Check if Ollama daemon is running and embedding model is available."""
+        import urllib.request
+        try:
+            req = urllib.request.Request(f"{base_url}/api/tags", method="GET")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                import json
+                data = json.loads(resp.read())
+                models = data.get("models", [])
+                # Handle both dict and object formats
+                names = []
+                for m in models:
+                    if isinstance(m, dict):
+                        names.append(m.get("name", ""))
+                        names.append(m.get("model", ""))
+                    else:
+                        names.append(getattr(m, "name", ""))
+                        names.append(getattr(m, "model", ""))
+                return any(model in n for n in names if n)
+        except Exception:
+            return False
+
+    def _probe_vllm_embeddings(self, base_url: str) -> bool:
+        """Check if vLLM embeddings endpoint is responsive."""
+        import urllib.request
+        try:
+            req = urllib.request.Request(f"{base_url}/v1/models", method="GET")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
 
     # =========================================================================
     # Summary

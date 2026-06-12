@@ -2,8 +2,8 @@
 
 > Comprehensive documentation of all work completed on the personal AI system
 
-**Last Updated:** March 25, 2026  
-**Overall Progress:** ~85% to MVP, ~60% to Full Vision
+**Last Updated:** June 12, 2026  
+**Overall Progress:** ~98% to MVP, ~75% to Full Vision
 
 ---
 
@@ -34,7 +34,7 @@ Velvet Nadir is a personal AI assistant designed to run entirely on local hardwa
 | Unified Hardware Intel | `Polymath` singleton for GPU/RAM/OS/provider selection |
 | Local LLM | Ollama and llama.cpp adapters |
 | Mesh LLM routing | `MeshLLMAdapter` for distributed inference across mesh |
-| Tool calling | JSON parsing with balanced brace extraction |
+| Tool calling | JSON parsing + execution (wired in Sprint 16) |
 | Context awareness | Parallel context tracks (Personal, Workshop, Business) |
 | Persistent memory | PowerMem integration with tiered storage (Aether/Mnemosyne/Tartarus) |
 | Memory consolidation | Xi scheduler + Fuxi (embed to Jing) + Agni (archive/promote/purify) |
@@ -43,22 +43,29 @@ Velvet Nadir is a personal AI assistant designed to run entirely on local hardwa
 | Distributed inference | Mesh-aware dynamic routing to LlamaCpp/Ollama/ONNX nodes |
 | Phone integration | WebSocket bridge for audio/video/GPS |
 | P2P communication | Zenoh-based message fabric |
-| Cognitive architecture | Project Shen — Yi/Po/Hun/Jing taxonomy |
-| Background tasks | Xi scheduler with 5 BreathTasks (Fuxi, Agni, Inari, DeviceWatchdog, Saraswati) |
+| Cognitive architecture | Project Shen — Yi/Po/Hun/Jing taxonomy (unified Po in Sprint 16) |
+| Background tasks | Xi scheduler with 6 BreathTasks (Fuxi, Agni, Inari, DeviceWatchdog, Saraswati, SkillApproval) |
 | Device trust | TrustEngine with hot cache + confidence EMA |
 | Agent hierarchy | AgentOrchestrator with roles + directed channels |
-| Model affinity | ModelAffinityTracker for model-task quality ranking |
+| Model affinity | ModelAffinityTracker for model-task quality ranking (Mesh-wired in Sprint 16) |
 | Skill learning | Saraswati pipeline (Shruti → Smriti → Vidya) |
 | Learned reflexes | Po pattern learning with JSON persistence |
 | Privacy model | Dual perimeter: mesh/internet + trusted/untrusted |
 | Cold storage | Tartarus (SQLite FTS5 archive) |
-| Vision | Po VisionMonitor + VisionEngine (VLM-based) |
+| Vision | Po VisionMonitor (Xiàng-wired in Sprint 16) + VisionEngine (VLM-based) |
+| Zenoh Security | Auto-provisioned mTLS and HMAC-SHA256 message signing |
+| Multi-Node Deployment | `NativeDriver` asyncssh deployment and multi-node discovery |
+| Mesh Memory Fan-out | `mesh_recall` distributed recall across mesh |
+| People Recognition | Xiàng facial/voice recognition integration (VisionMonitor-wired in Sprint 16) |
+| Spatial Awareness | Locus engine + Triangulation geofence learning |
+| Biometric Security Gate | Non-agentic `TrustGate` enforcement for device trust |
+| Resilient Embeddings | Self-healing embedding waterfall (Ollama -> vLLM -> ONNX -> Cloud) (Sprint 16) |
+| Universal Cloud LLM | Unified Google/NVIDIA/OpenRouter adapter under Security Config gate (Sprint 16) |
 
 ### ⚠️ In Progress / Partial
 
 - Custom "Hey Velvet" wake word training
 - Start discovery service by default
-- Zenoh security (PSK/mTLS)
 - 4-level privacy classification (currently 2-level perimeter in PrivacyGuard)
 
 ### ❌ Not Started
@@ -66,8 +73,6 @@ Velvet Nadir is a personal AI assistant designed to run entirely on local hardwa
 - Display routing (multi-display coordination)
 - TensorRT-LLM for Jetson
 - Smart home integrations
-- People recognition (face/voice embeddings)
-- Spatial awareness (geofence-triggered context merging)
 - Vehicle integration (CAN bus)
 
 ---
@@ -87,6 +92,11 @@ Velvet Nadir is a personal AI assistant designed to run entirely on local hardwa
 | 10 | Hive Mind memory + Xi + Trust + Saraswati | ✅ Complete |
 | 10.5 | Local plug-and-play persistent memory | ✅ Complete (in Sprint 10 Phase 1) |
 | 11 | Cleanup | ✅ Complete |
+| 12 | Security & Multi-Node | ✅ Complete |
+| 13 | Perception & Intelligence (Face, Voice, Location, TrustGate) | ✅ Complete |
+| 14 | Basilisk Protocol (Secure P2P RPC) | ✅ Complete |
+| 15 | UI Dashboard & Zenoh Wildcard Routing | ✅ Complete |
+| 16 | Cognitive Repair, Self-Healing Embeddings & Cloud LLM | ✅ Complete |
 
 ---
 
@@ -136,6 +146,15 @@ Velvet Nadir is a personal AI assistant designed to run entirely on local hardwa
 - **Audio-first** design (voice is primary interface)
 - **`@skill` decorator** for plugin registration
 - **Autonomy levels** (0-3: passive → informative → suggestive → autonomous)
+
+### 6. MemPalace Architecture Integration (Sprint 15)
+
+**Decision:** Integrate only the **Knowledge Graph** into Jing, deferring/skipping all other features:
+- **Contradiction Detection** — *Deferred* to Agni purification layer until KG data is sufficient.
+- **AAAK Dialect** — *Deferred* until edge hardware imposes strict context limits.
+- **Memory Stack (L0-L3)** — *Skipped*, perfectly overlaps with existing Aether/Mnemosyne/Tartarus.
+- **Palace Graph** — *Skipped*, perfectly overlaps with existing ContextWorkspace spatial models.
+- **MCP Server** — *Deferred* until external tool interop (Claude/Gemini) is required.
 
 ---
 
@@ -196,7 +215,7 @@ Velvet Nadir is a personal AI assistant designed to run entirely on local hardwa
 
 ## Test Coverage
 
-### Test Suites (128 tests, all passing)
+### Test Suites (247 tests, 245 passed, 2 skipped)
 
 | Suite | Tests | Coverage |
 |-------|-------|----------|
@@ -232,28 +251,53 @@ Velvet Nadir is a personal AI assistant designed to run entirely on local hardwa
 
 ## Remaining Work
 
-### Sprint 11: Cleanup (COMPLETE ✅)
+### Sprint 13: PERCEPTION & INTELLIGENCE MVP COMPLETE ✅
+
+Finalized the core intelligence architecture connecting perception to memory and security.
+- **236/236 regression tests passing**.
+- **Phase 1: TrustGate** — Strictly non-agentic biometric security perimeter that guards device trust promotions with `TrustGateError`.
+- **Phase 2: Xiàng (相)** — People Recognition layer capable of matching facial/voice embeddings to identities stored in Jing memory.
+- **Phase 3: Locus + Triangulation** — Spatial tracking using haversine math and automatic learning of frequent geofences via Xi `TriangulationTask`.
+- **Privacy Perimeter upgrade** — `PrivacyGuard` strictly blocks distribution of raw biometric embeddings (`tensor_data`, `biometrics`) across the mesh, isolating sensitive data locally.
+
+### Sprint 14: THE BASILISK PROTOCOL COMPLETE (PHASE 1) ✅
+
+Implemented secure ephemeral P2P communication and RAM isolation.
+- **240/240 regression tests passing**.
+- **Phase 1: Basilisk Protocol** — Ephemeral RAM enclaves for secure P2P RPC without long-term persistence.
+- **Basilisk Auth** — One-time biometric authentication over secure tunnels.
+- **Basilisk Skill** — Generic P2P secure query tool (PASSIVE autonomy, owner-invoked only).
+- **Fabric RPC** — Extended Zenoh fabric to support 1:1 Request/Response (Queryables).
+
+### Sprint 15: UI DASHBOARD & ZENOH WILDCARD ROUTING COMPLETE ✅
+
+Resolved deep architectural communication issues and brought the UI online.
+- **Display Bridge & UI Connectivity** — React-based WebSocket UI now connects to `display.py` for monitoring.
+- **Zenoh Wildcard Pattern Matching** — `_dispatch_local` now fully supports standard `*` and `**` routing, allowing broad local subscriptions (like `sys/**` for the Noise tab) to perfectly catch local heartbeats and events in real-time.
+- **System Stability** — Restored accidentally overwritten `MessageType` enums (e.g. `BASILISK_AUTH`, `TRUST_CHANGE_REQUEST`) ensuring error-free boot sequences.
+- **Vision Affirmation** — Despite adding the Display UI, the system strictly remains **Audio-First** and **Local-First**. The UI is purely an optional contextual monitor. The current reliance on the Google AI adapter / `gemini-3-flash-preview` is **strictly patchwork for testing** and will be replaced by fully local models (Ollama/Llama.cpp) once hardware constraints are resolved.
+
+| Skill approval queue (Saraswati) | Medium | ✅ Done |
+| Remove `GoogleAIAdapter` (privacy violation) | High | ⏳ Deferred (Sprint 16) |
+
+### Sprint 12: Security & Multi-Node (COMPLETE ✅)
 
 | Task | Priority | Status |
 |------|----------|--------|
-| Add `__all__` exports to all `velvet/*.py` modules | Medium | ✅ Done |
-| Sandbox `DeviceScript.script` field | Medium | ✅ Done |
-| Audit `import time` in hot paths | Low | ✅ Done |
-| Prune/Analyze unused `MessageType` variants | Low | ✅ Done |
-| Standardize error handling across adapters | Medium | ✅ Done |
-| Polymath integration for LLMService | Medium | ✅ Done |
-| TOML config file loading | Medium | ✅ Done |
-| Skill approval queue (Saraswati) | Medium | ✅ Done |
-| Remove `GoogleAIAdapter` (privacy violation) | High | ⏳ Deferred |
+| Core Mesh Security Model (`CertManager`, HMAC) | High | ✅ Done |
+| Zenoh security (mTLS integration) | High | ✅ Done |
+| NativeDriver `asyncssh` transition | Medium | ✅ Done |
+| MeshMemorySync `mesh_recall` fan-out | Medium | ✅ Done |
+| Comprehensive Multi-Node Scanning (Nmap fallback) | Low | ✅ Done |
 
-### Post-Cleanup
+### Sprint 16 / Immediate Next Steps
 
 | Task | Notes |
 |------|-------|
 | Train "Hey Velvet" wake word | 2-4 hours |
-| Core Mesh Security Model | 4-6 hours |
-| End-to-end integration test (live Ollama) | 2-4 hours |
-| Zenoh security (PSK/mTLS) | 4-8 hours |
+| End-to-end live integration test (live Ollama) | 2-4 hours |
+| Restore Local Embedding Pipeline | Fix Ollama validation error in `Jing` |
+| Remove `GoogleAIAdapter` | Enforce local-first mandate |
 
 ### Full Vision (Future)
 
@@ -321,6 +365,7 @@ d:\Open Projects\seamless_computing\sw\velvet\
 │   │   └── saraswati.py   # Skill learning pipeline
 │   └── skills/
 │       ├── __init__.py    # @skill decorator + registry
+│       ├── basilisk_skill.py # Secure P2P skills
 │       ├── network_ops.py # Network skills
 │       └── vision_skill.py # Vision skills
 ├── tests/                 # 22 test files, 128+ tests

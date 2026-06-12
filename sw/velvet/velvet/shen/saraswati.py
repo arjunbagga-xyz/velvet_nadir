@@ -100,7 +100,7 @@ class Shruti:
             )
 
             response = await adapter.generate(prompt, max_tokens=500)
-            return self._parse_candidates(response)
+            return self._parse_candidates(response.text)
         except ImportError:
             logger.warning("[Shruti] LLM adapter not available")
             return []
@@ -196,7 +196,7 @@ class Smriti:
             )
 
             response = await adapter.generate(prompt, max_tokens=500)
-            code = self._extract_code(response)
+            code = self._extract_code(response.text)
 
             if code:
                 return GeneratedSkill(
@@ -489,7 +489,7 @@ class Saraswati(BreathTask):
             logger.info(f"[Saraswati] Skill '{skill.name}' queued for approval in {self._pending_file}")
             
             # 4. Notify via Fabric
-            from velvet.fabric import get_fabric
+            from velvet.fabric import get_fabric, MessageType
             fabric = get_fabric()
             
             # Announce via TTS (as if Velvet is speaking)
@@ -499,6 +499,45 @@ class Saraswati(BreathTask):
                 "requires_approval": True
             }
             await fabric.publish("velvet/mesh/notify", notify_payload)
+            await fabric.publish(
+                MessageType.SKILL_PENDING_APPROVAL.value,
+                {"skill_name": skill.name, "description": skill.description}
+            )
             
         except Exception as e:
             logger.error(f"[Saraswati] Failed to queue skill {skill.name}: {e}")
+
+    async def resolve_pending_skill(self, skill_name: str, approved: bool) -> bool:
+        """Resolve a pending skill, deploying it if approved or discarding it."""
+        if not self._pending_file.exists():
+            logger.warning(f"[Saraswati] No pending skills file found.")
+            return False
+
+        try:
+            pending = json.loads(self._pending_file.read_text())
+        except Exception as e:
+            logger.error(f"[Saraswati] Failed to read pending skills: {e}")
+            return False
+
+        if skill_name not in pending:
+            logger.warning(f"[Saraswati] Pending skill not found: {skill_name}")
+            return False
+
+        skill_data = pending.pop(skill_name)
+
+        # Save the updated pending file
+        self._pending_file.write_text(json.dumps(pending, indent=2))
+
+        if approved:
+            logger.info(f"[Saraswati] User approved skill: {skill_name}")
+            # Reconstruct GeneratedSkill
+            skill = GeneratedSkill(
+                name=skill_data["name"],
+                code=skill_data["code"],
+                description=skill_data.get("description", "")
+            )
+            # Deploy it
+            return self._vidya.deploy(skill)
+        else:
+            logger.info(f"[Saraswati] User rejected skill: {skill_name}")
+            return True

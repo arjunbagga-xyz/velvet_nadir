@@ -4,7 +4,37 @@ Living document for deferred features, design ideas, and items not in the curren
 
 ---
 
-## 🚀 Session Handoff (March 25, 2026) -> Next Agent
+## 🚀 Session Handoff (June 12, 2026) -> Next Agent
+
+**Current State (End of Sprint 16):**
+- **Sprint 16 COMPLETE** — Cognitive loop desynchronizations resolved:
+  - **Tool execution wired:** `_process_input` in Gateway now calls `_handle_llm_response`, executing tools and adding responses to the context buffer correctly.
+  - **get_llm_adapter singleton implemented:** Fixed broken imports in `saraswati.py` and `jing.py`, restoring keyword semantic query expansion and background skill observation/generation.
+  - **Unified Po/Jing instances:** Fuxi background task now consolidates directly into Yi's live Po/Jing.
+  - **Wired VisionMonitor:** Injected `XiangEngine` into `VisionMonitor` in `Po.__init__` enabling facial/voice recognition.
+  - **Model Affinity & Trust wired:** Mesh node selection now scores devices based on ModelAffinity rankings, and Gateway resolves pending actions back to the `TrustEngine` feedback loop.
+- **Resilient Self-Healing Embedding Pipeline:** Implemented a waterfall resolver in `Polymath` that probes Ollama, then vLLM, then ONNX, before falling back to cloud (NVIDIA/Gemini/OpenRouter) only if gated by `allow_cloud_adapters=True` and API keys are present.
+- **Universal Cloud LLM Adapter:** Created `UniversalCloudLLMAdapter` supporting Google Gemini, NVIDIA NIM, and OpenRouter, all gated behind a unified `allow_cloud_adapters` security setting. The legacy `allow_google_adapter` was deprecated gracefully.
+- **Saraswati Skill Approval System:** Added `SkillApprovalTask` in Xi to check pending skills and proactively prompt the user, along with a GET/POST REST API in the `DisplayBridge` `/api/skills/pending`.
+
+**Note on Security & Privacy Drift:**
+- Outbound API calls to Google Gemini, NVIDIA integrate, and OpenRouter are strictly opt-in and restricted.
+- The `PrivacyGuard` must be extended in future sprints to enforce strict data filtering on outbound cloud requests, ensuring personal conversational data never leaks.
+
+---
+
+## 🚀 Session Handoff (May 11, 2026) -> Next Agent
+
+**Current State (End of Sprint 15):**
+- **Sprint 15 COMPLETE** — UI Dashboard brought online, Zenoh wildcard routing fully operational (`*` and `**`), and `MessageType` enums restored for a clean boot.
+- **Sprint 14 COMPLETE** — The Basilisk Protocol (Phase 1) implemented for secure P2P RPC and ephemeral RAM enclaves.
+- **Sprint 13 COMPLETE** — Perception & Intelligence MVP (TrustGate, Xiàng, Locus).
+- **Vision Affirmation** — **CRITICAL NOTE FOR NEXT AGENT**: Despite significant work on the React UI dashboard and `display.py`, **the system remains strictly AUDIO-FIRST and LOCAL-FIRST**. The UI is purely an optional contextual monitor. Do not drift into making this a screen-first application.
+- **API Patchwork** — The current reliance on `GoogleAIAdapter` and `gemini-3-flash-preview` is **strictly patchwork for testing speed**. The core mission mandates no cloud dependency. The Ollama embedding validation error in `Jing` must be fixed to restore the fully local pipeline.
+
+---
+
+## 🚀 Session Handoff (March 25, 2026) -> Previous Agent
 
 **Current State (End of Sprint 11):**
 - **Verification COMPLETE** — 171/171 regression tests passing.
@@ -170,3 +200,28 @@ The following items were identified during the Sprint 11 audit but explicitly de
 4. **TensorRT-LLM Backend (`polymath.py`)** — Integrating `TensorRT-LLM` via PyTriton for Jetson Orin optimized inference.
 5. **vLLM Backend (`polymath.py`)** — Integrating `vLLM` for large Linux GPU continuous batching via `Polymath` auto-selection.
 6. **Remove `GoogleAIAdapter`** — Still heavily utilized for local testing and debugging speed.
+---
+
+## 🧠 MemPalace Architecture Evaluation (Sprint 15)
+
+During Sprint 15, we evaluated the MemPalace architecture for integration. We successfully integrated the **Knowledge Graph** into Jing, but explicitly deferred or skipped the following features:
+
+### 1. Contradiction Detection
+- **What**: Checking new assertions against existing KG facts (attribution conflicts, temporal errors).
+- **Decision**: **DEFERRED**. Highly relevant for our multi-agent mesh where conflicting memories are inevitable. We will wire this into **Agni** (the purification layer) to flag contradictions during memory consolidation, but only after Agni is fully operational and we have enough KG data.
+
+### 2. AAAK Dialect (Lossy Text Compression)
+- **What**: ~40% token reduction via entity-aware abbreviation mappings.
+- **Decision**: **DEFERRED**. We aren't hitting token limits yet. Will revisit when we deploy to edge devices (e.g., Jetson Thor) where context window pressure is high and compute/RAM is strictly limited.
+
+### 3. Memory Stack (L0–L3 Progressive Loading)
+- **What**: 4-layer memory metaphor (Identity, Story, Recall, Search).
+- **Decision**: **SKIPPED**. Directly overlaps with our **Aether / Mnemosyne / Tartarus** tiered storage model. No value in replacing a working system. Revisit only if we deprecate PowerMem entirely.
+
+### 4. MCP Server (29 External Tools)
+- **What**: Full Model Context Protocol (MCP) tool suite for palace reads/writes and KG operations.
+- **Decision**: **DEFERRED**. Built for external interop (Claude Code, Gemini CLI). Will revisit in the distant future when we want to build developer APIs or integrate Velvet with external standard agentic frameworks.
+
+### 5. Palace Graph (Room-Based Navigation)
+- **What**: Cross-wing navigation graph built from ChromaDB metadata.
+- **Decision**: **SKIPPED**. Overlaps heavily with our **ContextWorkspace** spatial model and the **Locus** engine. Will only revisit if we need to discover "hidden tunnels" between completely unrelated workspaces.
