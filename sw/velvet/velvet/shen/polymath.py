@@ -12,6 +12,7 @@ questions go through Polymath.
 """
 
 import sys
+import asyncio
 import shutil
 import platform
 from abc import ABC, abstractmethod
@@ -111,18 +112,90 @@ class LlamaCppBackend(InferenceBackend):
         return output["choices"][0]["text"]
 
 
+class VLLMBackend(InferenceBackend):
+    """Inference via local vLLM engine (in-process)."""
+    
+    def __init__(self, model_path: str):
+        self.model_path = model_path
+        self._llm = None
+        
+    def _ensure_loaded(self):
+        if self._llm is not None:
+            return
+        try:
+            import vllm
+            logger.info(f"[Polymath] Loading local vLLM model from: {self.model_path}")
+            self._llm = vllm.LLM(model=self.model_path)
+        except ImportError:
+            logger.error("[Polymath] vllm package is not installed.")
+            raise
+            
+    def name(self) -> str:
+        return "vLLM-local"
+        
+    async def generate(self, prompt: str, **kwargs) -> str:
+        self._ensure_loaded()
+        import vllm
+        max_tokens = kwargs.get("max_tokens", 512)
+        temperature = kwargs.get("temperature", 0.7)
+        sampling_params = vllm.SamplingParams(
+            max_tokens=max_tokens,
+            temperature=temperature
+        )
+        
+        loop = asyncio.get_running_loop()
+        def _run_inference():
+            outputs = self._llm.generate([prompt], sampling_params)
+            if outputs:
+                return outputs[0].outputs[0].text
+            return ""
+            
+        return await loop.run_in_executor(None, _run_inference)
+
+
 class TensorRTBackend(InferenceBackend):
     """Inference via TensorRT-LLM (Jetson Optimized)."""
     
     def __init__(self, engine_dir: str):
         self.engine_dir = engine_dir
+        self._runner = None
+        self._tokenizer = None
         
     def name(self) -> str:
         return "TensorRT-LLM"
 
+    def _ensure_loaded(self):
+        if self._runner is not None:
+            return
+        try:
+            from tensorrt_llm.runtime import ModelRunner
+            from transformers import AutoTokenizer
+            logger.info(f"[Polymath] Loading TensorRT-LLM engine from: {self.engine_dir}")
+            self._runner = ModelRunner.from_dir(self.engine_dir, rank=0)
+            self._tokenizer = AutoTokenizer.from_pretrained(self.engine_dir)
+        except ImportError:
+            logger.error("[Polymath] tensorrt_llm or transformers not installed.")
+            raise
+
     async def generate(self, prompt: str, **kwargs) -> str:
-        # TODO: Implement actual TensorRT bindings via PyTriton
-        return f"[TensorRT-LLM] Accelerated response to: {prompt[:20]}..."
+        self._ensure_loaded()
+        max_tokens = kwargs.get("max_tokens", 512)
+        temperature = kwargs.get("temperature", 0.7)
+        
+        loop = asyncio.get_running_loop()
+        def _run_inference():
+            input_ids = self._tokenizer.encode(prompt)
+            outputs = self._runner.generate(
+                [input_ids],
+                max_new_tokens=max_tokens,
+                temperature=temperature
+            )
+            output_ids = outputs[0][0]
+            if hasattr(output_ids, "tolist"):
+                output_ids = output_ids.tolist()
+            return self._tokenizer.decode(output_ids, skip_special_tokens=True)
+            
+        return await loop.run_in_executor(None, _run_inference)
 
 
 # ============================================================================
@@ -251,7 +324,7 @@ class Polymath:
 
     def create_backend(self, model_path: str, **kwargs) -> InferenceBackend:
         """Instantiate the best backend for the given model."""
-        backend_cls = self._select_backend_class()
+        backend_cls = self.select_backend_class(model_path)
         
         n_gpu_layers = 0
         if self.profile.has_cuda:
@@ -263,13 +336,35 @@ class Polymath:
         
         if backend_cls == TensorRTBackend:
             return TensorRTBackend(engine_dir=str(model_path))
+        elif backend_cls == VLLMBackend:
+            return VLLMBackend(model_path=str(model_path))
              
         return LlamaCppBackend(model_path=str(model_path), n_gpu_layers=n_gpu_layers)
 
-    def select_backend_class(self):
-        """Select the best backend CLASS based on hardware."""
+    def select_backend_class(self, model_path: str = None) -> type[InferenceBackend]:
+        """Select the best backend CLASS based on hardware and model signature."""
         profile = self.profile
         
+        if model_path:
+            p = Path(model_path)
+            if p.suffix == ".gguf" or p.name.endswith(".gguf"):
+                return LlamaCppBackend
+            if p.is_dir():
+                try:
+                    # Look for TensorRT .engine files
+                    if any(f.suffix == ".engine" for f in p.iterdir()):
+                        return TensorRTBackend
+                except Exception:
+                    pass
+                try:
+                    # Look for safetensors or config.json
+                    has_safetensors = any(f.suffix == ".safetensors" for f in p.iterdir())
+                    has_config = (p / "config.json").exists()
+                    if has_safetensors or has_config:
+                        return VLLMBackend
+                except Exception:
+                    pass
+
         if profile.type == HardwareType.JETSON_ORIN:
             if profile.has_tensorrt:
                 return TensorRTBackend
@@ -277,8 +372,7 @@ class Polymath:
             return LlamaCppBackend
 
         if profile.type == HardwareType.NVIDIA_GPU and profile.vram_gb >= 12 and profile.os == "Linux":
-            # TODO: return VLLMBackend when implemented
-            return LlamaCppBackend
+            return VLLMBackend
 
         return LlamaCppBackend
 

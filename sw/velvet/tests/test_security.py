@@ -397,3 +397,88 @@ class TestPrivacyAndMirage:
         guard = PrivacyGuard()
         assert guard.biometric_auto_restrict("face_embedding") is True
         assert guard.biometric_auto_restrict("public_data") is False
+
+
+# ============================================================================
+# High Performance Local Backends (Sprint 18)
+# ============================================================================
+
+class TestHighPerfBackends:
+    """Verify loading, signature detection, and inference routing for high-perf backends."""
+
+    def test_select_backend_class_by_signature(self, tmp_path):
+        from velvet.shen.polymath import get_polymath, LlamaCppBackend, TensorRTBackend, VLLMBackend
+        poly = get_polymath()
+        
+        # 1. GGUF signature
+        model_gguf = tmp_path / "model.gguf"
+        model_gguf.write_text("fake gguf content")
+        assert poly.select_backend_class(str(model_gguf)) == LlamaCppBackend
+        
+        # 2. TensorRT engine directory signature
+        trt_dir = tmp_path / "trt_model"
+        trt_dir.mkdir()
+        (trt_dir / "model.engine").write_text("fake engine content")
+        assert poly.select_backend_class(str(trt_dir)) == TensorRTBackend
+        
+        # 3. vLLM safetensors directory signature
+        vllm_dir = tmp_path / "vllm_model"
+        vllm_dir.mkdir()
+        (vllm_dir / "model.safetensors").write_text("fake safetensors content")
+        assert poly.select_backend_class(str(vllm_dir)) == VLLMBackend
+
+    @pytest.mark.asyncio
+    async def test_vllm_backend_generation(self, tmp_path):
+        import sys
+        from velvet.shen.polymath import VLLMBackend
+        
+        # Mock the vllm library and LLM object
+        mock_llm_instance = MagicMock()
+        mock_output = MagicMock()
+        mock_output.outputs = [MagicMock(text="vLLM generated response")]
+        mock_llm_instance.generate.return_value = [mock_output]
+        
+        with patch("sys.modules", new=dict(sys.modules)) as mock_sys_modules:
+            mock_vllm = MagicMock()
+            mock_vllm.LLM.return_value = mock_llm_instance
+            mock_vllm.SamplingParams = MagicMock()
+            mock_sys_modules["vllm"] = mock_vllm
+            
+            backend = VLLMBackend(str(tmp_path))
+            res = await backend.generate("Hello vLLM", max_tokens=100)
+            
+            assert res == "vLLM generated response"
+            mock_vllm.LLM.assert_called_once_with(model=str(tmp_path))
+            mock_llm_instance.generate.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_tensorrt_backend_generation(self, tmp_path):
+        import sys
+        from velvet.shen.polymath import TensorRTBackend
+        
+        # Mock tensorrt_llm and transformers
+        mock_runner_instance = MagicMock()
+        # Mock generate returning token IDs
+        mock_runner_instance.generate.return_value = [[[1, 2, 3]]]
+        
+        mock_tokenizer_instance = MagicMock()
+        mock_tokenizer_instance.encode.return_value = [10, 20]
+        mock_tokenizer_instance.decode.return_value = "TensorRT generated response"
+        
+        with patch("sys.modules", new=dict(sys.modules)) as mock_sys_modules:
+            mock_trt = MagicMock()
+            mock_trt.runtime.ModelRunner.from_dir.return_value = mock_runner_instance
+            mock_sys_modules["tensorrt_llm"] = mock_trt
+            mock_sys_modules["tensorrt_llm.runtime"] = mock_trt.runtime
+            
+            mock_transformers = MagicMock()
+            mock_transformers.AutoTokenizer.from_pretrained.return_value = mock_tokenizer_instance
+            mock_sys_modules["transformers"] = mock_transformers
+            
+            backend = TensorRTBackend(str(tmp_path))
+            res = await backend.generate("Hello TensorRT", max_tokens=100)
+            
+            assert res == "TensorRT generated response"
+            mock_trt.runtime.ModelRunner.from_dir.assert_called_once_with(str(tmp_path), rank=0)
+            mock_transformers.AutoTokenizer.from_pretrained.assert_called_once_with(str(tmp_path))
+            mock_runner_instance.generate.assert_called_once_with([[10, 20]], max_new_tokens=100, temperature=0.7)

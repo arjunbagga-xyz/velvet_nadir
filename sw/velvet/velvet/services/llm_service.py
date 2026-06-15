@@ -54,14 +54,22 @@ class LLMProvider:
             model = self.config.llm.model
             
             # 2. Integrate with Polymath for creation
-            # If it's a high-performance local backend, use Polymath's specific logic
-            if adapter_type in ("llama.cpp", "tensorrt"):
+            # If it's a high-performance local backend, use Polymath's specific logic.
+            # Route to Polymath if explicitly set to local/in-process types, or if the model path exists locally.
+            from pathlib import Path
+            is_local_path = False
+            try:
+                is_local_path = Path(model).exists()
+            except Exception:
+                pass
+
+            if adapter_type in ("llama.cpp", "tensorrt", "vllm-local") or (adapter_type == "vllm" and is_local_path):
                 # Use Polymath's create_backend which knows about VRAM, CUDA, etc.
                 backend = self.poly.create_backend(model)
                 
                 # Wrap it to fulfill the LLMAdapter interface used by this service
                 self.backend = PolymathAdapterWrapper(backend, model)
-                logger.info(f"[LLMService] High-perf backend loaded via Polymath: {adapter_type}")
+                logger.info(f"[LLMService] High-perf backend loaded via Polymath: {adapter_type} ({model})")
             else:
                 # Fallback to standard network or hosted adapters
                 kwargs = {"model": model}
