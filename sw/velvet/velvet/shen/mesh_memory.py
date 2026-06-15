@@ -66,6 +66,13 @@ class MeshMemorySync:
             return
 
         try:
+            from velvet.privacy import PrivacyClassifier, PrivacyLevel
+            classifier = PrivacyClassifier()
+            level = classifier.classify(text)
+            
+            if level == PrivacyLevel.RESTRICTED:
+                logger.info("[MeshMemorySync] Bypassing mesh broadcast for RESTRICTED memory (stay on device forever)")
+                return
             from velvet.config import get_config
             cfg = get_config()
 

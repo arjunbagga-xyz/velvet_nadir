@@ -588,13 +588,17 @@ class AudioPipeline:
     
     def __init__(
         self,
-        wake_word: str = "hey_jarvis",
+        wake_word: str = "Hey Velvet",
+        wake_model_path: str = "",
         whisper_model: str = "base",
         tts_voice: str = "en_US-lessac-medium",
     ):
         self.capture = AudioCapture()
         self.vad = VADProcessor()
-        self.wake_detector = WakeWordDetector(wake_phrase=wake_word)
+        self.wake_detector = WakeWordDetector(
+            wake_phrase=wake_word,
+            model_path=wake_model_path
+        )
         
         from velvet.config import get_config
         self.config = get_config()
@@ -665,7 +669,7 @@ class AudioPipeline:
                         self._is_awake = True
                         await fabric.publish(
                             MessageType.WAKE_WORD.value,
-                            {"phrase": "hey_jarvis", "confidence": float(confidence)}
+                            {"phrase": self.wake_detector.wake_phrase, "confidence": float(confidence)}
                         )
                         logger.info("[MIC] Listening...")
                         continue

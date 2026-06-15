@@ -149,6 +149,7 @@ class Polymath:
         """
         self._device = device
         self.profile = self._probe_hardware()
+        self._cached_memory_config = None
         logger.info(
             f"[Polymath] {self.profile.type.value} | "
             f"GPU={self.profile.gpu_name or 'None'} ({self.profile.vram_gb}GB) | "
@@ -368,6 +369,9 @@ class Polymath:
         embedding and LLM providers, then assembles the complete config with
         all Sprint 10 features wired from VelvetConfig.
         """
+        if self._cached_memory_config is not None:
+            return self._cached_memory_config
+
         from velvet.config import get_config
         cfg = get_config()
         mem = cfg.memory
@@ -450,6 +454,7 @@ class Polymath:
             f"embedder={embed_cfg.get('config', {}).get('model', '?')}, "
             f"graph={mem.graph_enabled}"
         )
+        self._cached_memory_config = config
         return config
 
     def _resolve_memory_llm_provider(self) -> dict:

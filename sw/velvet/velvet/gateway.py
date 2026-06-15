@@ -329,6 +329,15 @@ class Gateway:
 
     async def _process_input(self, user_input: str, cancel: asyncio.Event | None = None) -> None:
         """Process user input through Yi (The Intent/Arbiter)."""
+        try:
+            from velvet.privacy import PrivacyClassifier
+            classifier = PrivacyClassifier()
+            level = classifier.classify(user_input)
+            self.context.current_privacy_level = level
+            logger.debug(f"[Gateway] Classified input privacy level: {level.name}")
+        except Exception as e:
+            logger.debug(f"[Gateway] Failed to classify user input: {e}")
+            
         self.state = GatewayState.PROCESSING
         try:
             # PROJECT SHEN: Unified Cognition

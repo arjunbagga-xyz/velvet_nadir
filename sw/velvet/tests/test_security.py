@@ -225,3 +225,175 @@ class TestBasiliskProtocol:
             assert result.data["status"] == "ok"
             assert result.data["biometrics"] == "<BASILISK_STRIPPED:list>"
             assert result.data["log"] == "Access granted"
+
+
+# ============================================================================
+# Privacy and Mirage Protocol (Sprint 17) Tests
+# ============================================================================
+
+class TestPrivacyAndMirage:
+    """Tests for PrivacyGuard, PrivacyClassifier, and MirageProxy."""
+
+    def test_get_privacy_guard_singleton(self):
+        from velvet.privacy import get_privacy_guard
+        g1 = get_privacy_guard()
+        g2 = get_privacy_guard()
+        assert g1 is g2
+
+    def test_is_safe_to_send_blocks_pii(self):
+        from velvet.privacy import get_privacy_guard
+        guard = get_privacy_guard()
+        # Mock _is_mesh_peer to return False so it treats destination as cloud
+        with patch.object(guard, "_is_mesh_peer", return_value=False):
+            # SSN pattern in text
+            assert guard.is_safe_to_send("My SSN is 123-45-6789", "cloud") is False
+
+    def test_is_safe_to_send_allows_clean_text(self):
+        from velvet.privacy import get_privacy_guard
+        guard = get_privacy_guard()
+        with patch.object(guard, "_is_mesh_peer", return_value=False):
+            assert guard.is_safe_to_send("Hello, how are you?", "cloud") is True
+
+    def test_mirage_proxy_detects_names(self):
+        from velvet.mirage import MirageProxy
+        proxy = MirageProxy()
+        # Test with name and trigger keywords
+        text = "Hello, meet Priya Kapoor at the clinic."
+        scrambled, smap = proxy.scramble(text)
+        assert scrambled != text
+        assert smap is not None
+        assert "Priya Kapoor" in smap.forward
+
+    def test_mirage_proxy_replaces_phone(self):
+        from velvet.mirage import MirageProxy
+        proxy = MirageProxy()
+        text = "Call me at 555-123-4567 tomorrow."
+        scrambled, smap = proxy.scramble(text)
+        assert "555-123-4567" not in scrambled
+        assert "555-" in scrambled
+        assert smap is not None
+
+    def test_mirage_round_trip(self):
+        from velvet.mirage import MirageProxy
+        proxy = MirageProxy()
+        text = "Hello, I am Priya Kapoor and my number is 555-123-4567."
+        scrambled, smap = proxy.scramble(text)
+        assert scrambled != text
+        rehydrated = proxy.rehydrate(scrambled, smap)
+        assert rehydrated == text
+
+    def test_mirage_proxy_no_pii(self):
+        from velvet.mirage import MirageProxy
+        proxy = MirageProxy()
+        text = "What is the weather today?"
+        scrambled, smap = proxy.scramble(text)
+        assert scrambled == text
+        assert smap is None
+
+    def test_mirage_map_is_ephemeral(self):
+        from velvet.mirage import MirageMap
+        smap = MirageMap()
+        smap.add("original", "fake")
+        assert smap.forward["original"] == "fake"
+        assert smap.reverse["fake"] == "original"
+
+    def test_privacy_level_ordering(self):
+        from velvet.privacy import PrivacyLevel
+        assert PrivacyLevel.PUBLIC < PrivacyLevel.PERSONAL
+        assert PrivacyLevel.PERSONAL < PrivacyLevel.SENSITIVE
+        assert PrivacyLevel.SENSITIVE < PrivacyLevel.RESTRICTED
+
+    def test_classifier_ssn_is_sensitive(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("My SSN is 000-12-3456") == PrivacyLevel.SENSITIVE
+
+    def test_classifier_credit_card_is_sensitive(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("Card: 1234-5678-9012-3456") == PrivacyLevel.SENSITIVE
+
+    def test_classifier_email_is_sensitive(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("Email me at test@example.com") == PrivacyLevel.SENSITIVE
+
+    def test_classifier_medical_is_sensitive(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("I have high blood pressure") == PrivacyLevel.SENSITIVE
+
+    def test_classifier_gossip_is_sensitive(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("don't tell anyone about the affair") == PrivacyLevel.SENSITIVE
+
+    def test_classifier_password_is_restricted(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("my master password is supersecret") == PrivacyLevel.RESTRICTED
+
+    def test_classifier_biometric_dtype_is_restricted(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("", data_type="face_embedding") == PrivacyLevel.RESTRICTED
+
+    def test_classifier_schedule_is_personal(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("Let's schedule a meeting") == PrivacyLevel.PERSONAL
+
+    def test_classifier_clean_text_is_public(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("Hello world") == PrivacyLevel.PUBLIC
+
+    def test_classifier_aadhar_is_sensitive(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("My Aadhaar number is 1234 5678 9012") == PrivacyLevel.SENSITIVE
+        assert c.classify("Aadhar is 123456789012") == PrivacyLevel.SENSITIVE
+
+    def test_passport_is_sensitive(self):
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        c = PrivacyClassifier()
+        assert c.classify("Passport number is A1234567") == PrivacyLevel.SENSITIVE
+
+    def test_guard_blocks_restricted_from_all(self):
+        from velvet.privacy import PrivacyGuard, PrivacyLevel
+        guard = PrivacyGuard()
+        with patch.object(guard, "_is_mesh_peer", return_value=True), \
+             patch.object(guard, "_is_trusted_peer", return_value=True):
+            assert guard.is_safe_to_send("any", "peer", level=PrivacyLevel.RESTRICTED) is False
+
+    def test_guard_blocks_personal_raw_to_cloud(self):
+        from velvet.privacy import PrivacyGuard, PrivacyLevel
+        guard = PrivacyGuard()
+        with patch.object(guard, "_is_mesh_peer", return_value=False):
+            assert guard.is_safe_to_send("any", "cloud", level=PrivacyLevel.PERSONAL) is False
+
+    def test_guard_allows_public_to_cloud(self):
+        from velvet.privacy import PrivacyGuard, PrivacyLevel
+        guard = PrivacyGuard()
+        with patch.object(guard, "_is_mesh_peer", return_value=False):
+            assert guard.is_safe_to_send("any", "cloud", level=PrivacyLevel.PUBLIC) is True
+
+    def test_guard_allows_personal_to_trusted_peer(self):
+        from velvet.privacy import PrivacyGuard, PrivacyLevel
+        guard = PrivacyGuard()
+        with patch.object(guard, "_is_mesh_peer", return_value=True), \
+             patch.object(guard, "_is_trusted_peer", return_value=True):
+            assert guard.is_safe_to_send("any", "trusted_peer", level=PrivacyLevel.PERSONAL) is True
+
+    def test_guard_blocks_sensitive_from_untrusted_peer(self):
+        from velvet.privacy import PrivacyGuard, PrivacyLevel
+        guard = PrivacyGuard()
+        with patch.object(guard, "_is_mesh_peer", return_value=True), \
+             patch.object(guard, "_is_trusted_peer", return_value=False):
+            assert guard.is_safe_to_send("any", "untrusted_peer", level=PrivacyLevel.SENSITIVE) is False
+
+    def test_biometric_auto_restrict_still_works(self):
+        from velvet.privacy import PrivacyGuard
+        guard = PrivacyGuard()
+        assert guard.biometric_auto_restrict("face_embedding") is True
+        assert guard.biometric_auto_restrict("public_data") is False

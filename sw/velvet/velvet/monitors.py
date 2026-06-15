@@ -170,6 +170,7 @@ class AudioMonitor(StreamMonitor):
         cfg = self._audio_config
         self._pipeline = AudioPipeline(
             wake_word=cfg.wake_word,
+            wake_model_path=getattr(cfg, 'wake_model_path', ''),
             whisper_model=cfg.whisper_model_path or "base",
             tts_voice=cfg.tts_model_path or "en_US-lessac-medium"
         )

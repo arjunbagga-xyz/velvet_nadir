@@ -1,12 +1,22 @@
 # Velvet Nadir Handoff Document
 
-> Current state of the system after Sprint 16, for the next agent or session.
+> Current state of the system after Sprint 17, for the next agent or session.
 
-**Last Updated:** June 12, 2026
+**Last Updated:** June 15, 2026
 
 ---
 
 ## 1. System State
+
+### Sprint 17: COMPLETE ✅ (90 tests passing)
+
+**MVP Polish & Post-MVP Security Hardening:**
+- **The Mirage Protocol (`MirageProxy`):** Automatically scrambles PII/sensitive data (names, emails, phone numbers, Aadhaar, Passport) before cloud LLM transmission using synthetic equivalents (e.g. Dr. Amara Singh -> Dr. Elena Novak) and reverses the mapping on response.
+- **4-Level Privacy Classification:** Upgraded system data flows to classify data into `PUBLIC`, `PERSONAL`, `SENSITIVE`, and `RESTRICTED` levels via `PrivacyClassifier` and tags `VelvetMessage`.
+- **Aadhaar & Passport Support:** Added pattern/keyword recognition in `PrivacyClassifier` to catch Aadhaar cards and passports, classifying them as `SENSITIVE`.
+- **Basilisk Protocol RAM Enclave Integration:** Plumbed `BasiliskEnclave` inside cloud completion pathways to process Mirage Protocol PII maps dynamically in RAM without persistence.
+- **Device-Bound Restricted Memory Sync:** Configured memory sync inside `mesh_memory.py` so that `RESTRICTED` data stays on the local device forever and is never shared across peers or cloud vectors. Restricts local vector inserts/queries for `PERSONAL`/`SENSITIVE`/`RESTRICTED` to local FTS5 `Tartarus` store rather than Aether if a cloud embedding service is active, avoiding cloud vector leaks.
+- **Hey Velvet Wake Word default:** Updated config/audio defaults to `"Hey Velvet"`.
 
 ### Sprint 16: COMPLETE ✅ (200+ tests passing)
 
@@ -100,12 +110,13 @@ velvet/
 
 ### Immediate Next Steps
 
-- **Train custom "Hey Velvet" wake word**
 - **End-to-end live integration test (with live Ollama and real audio)**
 - **PrivacyGuard exfiltration filters:** Deepen the outbound security filter checks for cloud requests inside the PrivacyGuard.
+- **Audit memory sync for RESTRICTED data:** We need to circle back and check if RESTRICTED data never leaves the device, or we have protocols for data sharing within the mesh. If backing up isn't enabled, this can cause the system to lose data if a device gets damaged. Perhaps we need to brainstorm a data sharing/backup sysyem, but first audit what we currently have.
 
 ### Deferred for Future (Post-MVP)
 
+- **Audit memory sync for RESTRICTED data:** We need to circle back and check if RESTRICTED data never leaves the device, or we have protocols for data sharing within the mesh. If backing up isn't enabled, this can cause the system to lose data if a device gets damaged. Perhaps we need to brainstorm a data sharing/backup sysyem, but first audit what we currently have.
 - **Context merging implementation** (deferred due to GPS/hardware requirements)
 - **TensorRT-LLM adapter** for high-speed local inference on Jetson
 - **Deploy on Jetson Thor hardware**
@@ -122,7 +133,7 @@ velvet/
 | Memory consolidation | ✅ | Xi + Fuxi + Agni BreathTasks |
 | Skill hot-plug | ✅ | Saraswati → Vidya → `~/.velvet/skills/` |
 | Device mesh + heartbeats | ✅ | `devices.py` + `fabric.py` |
-| Privacy model | ✅ | 4-level classification (via Basilisk Protocol in Sprint 14) |
+| Privacy model | ✅ | 4-level classification (PUBLIC/PERSONAL/SENSITIVE/RESTRICTED, Mirage Protocol, and device-bound restricted sync in Sprint 17) |
 | Model routing | ✅ | MeshLLMAdapter + ModelAffinityTracker (wired in Sprint 16) |
 | Display routing | ❌ | TTS-only output (Target: Sprint 15) |
 | People recognition | ✅ | Xiàng facial/voice recognition integration (wired in Po in Sprint 16) |

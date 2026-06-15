@@ -136,6 +136,7 @@ class VelvetMessage:
     source_device: str
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     correlation_id: str | None = None
+    privacy_level: int = 0
     
     def to_bytes(self) -> bytes:
         """Serialize to MessagePack bytes, with optional HMAC signature."""
@@ -145,6 +146,7 @@ class VelvetMessage:
             "source": self.source_device,
             "ts": self.timestamp.isoformat(),
             "corr_id": self.correlation_id,
+            "privacy_level": self.privacy_level,
         })
         # Append HMAC if mesh_secret is configured
         try:
@@ -185,6 +187,7 @@ class VelvetMessage:
             source_device=unpacked["source"],
             timestamp=datetime.fromisoformat(unpacked["ts"]),
             correlation_id=unpacked.get("corr_id"),
+            privacy_level=unpacked.get("privacy_level", 0),
         )
 
 

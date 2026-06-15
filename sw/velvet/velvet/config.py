@@ -82,7 +82,7 @@ class AudioConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="VELVET_AUDIO_")
     
     enabled: bool = True
-    wake_word: str = "hey_jarvis"
+    wake_word: str = "Hey Velvet"
     sample_rate: int = 16000
     vad_threshold: float = 0.5
     silence_duration_ms: int = 1000

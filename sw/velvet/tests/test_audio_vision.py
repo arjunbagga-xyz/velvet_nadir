@@ -46,6 +46,28 @@ class TestAudioPipeline:
             assert stt._model is not None
             MockWhisper.assert_called()
 
+    def test_wake_word_config_plumbing(self):
+        """AudioPipeline receives custom wake_word and wake_model_path."""
+        with patch("velvet.audio.AudioCapture"), \
+             patch("velvet.audio.VADProcessor"), \
+             patch("velvet.config.get_config") as mock_get_config:
+            
+            mock_cfg = MagicMock()
+            mock_cfg.audio.stt_provider = "whisper"
+            mock_get_config.return_value = mock_cfg
+            
+            from velvet.audio import AudioPipeline
+            
+            # Test default
+            pipeline = AudioPipeline()
+            assert pipeline.wake_detector.wake_phrase == "Hey Velvet"
+            assert pipeline.wake_detector.model_path == ""
+            
+            # Test custom
+            pipeline = AudioPipeline(wake_word="custom_wake", wake_model_path="/path/to/custom.onnx")
+            assert pipeline.wake_detector.wake_phrase == "custom_wake"
+            assert pipeline.wake_detector.model_path == "/path/to/custom.onnx"
+
 
 # ============================================================================
 # Audio Monitor Tests
@@ -59,6 +81,7 @@ class TestAudioMonitor:
         with patch("velvet.config.get_config") as mock_get_config:
             mock_config = MagicMock()
             mock_config.audio.wake_word = "hey velvet"
+            mock_config.audio.wake_model_path = ""
             mock_config.audio.whisper_model_path = None
             mock_config.audio.tts_model_path = None
             mock_get_config.return_value = mock_config
@@ -73,6 +96,7 @@ class TestAudioMonitor:
                 # Check setup parameters
                 MockPipelineClass.assert_called_with(
                     wake_word="hey velvet",
+                    wake_model_path="",
                     whisper_model="base",
                     tts_voice="en_US-lessac-medium"
                 )
@@ -80,6 +104,31 @@ class TestAudioMonitor:
                 
                 await monitor.stop()
                 mock_pipeline_instance.stop.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_audio_monitor_plumbing(self, mock_fabric):
+        with patch("velvet.config.get_config") as mock_get_config:
+            mock_config = MagicMock()
+            mock_config.audio.wake_word = "custom_wake"
+            mock_config.audio.wake_model_path = "/path/to/custom.onnx"
+            mock_config.audio.whisper_model_path = "large"
+            mock_config.audio.tts_model_path = "piper_voice"
+            mock_get_config.return_value = mock_config
+            
+            with patch("velvet.audio.AudioPipeline") as MockPipelineClass:
+                mock_pipeline_instance = AsyncMock()
+                MockPipelineClass.return_value = mock_pipeline_instance
+                
+                monitor = AudioMonitor()
+                await monitor.start()
+                
+                MockPipelineClass.assert_called_with(
+                    wake_word="custom_wake",
+                    wake_model_path="/path/to/custom.onnx",
+                    whisper_model="large",
+                    tts_voice="piper_voice"
+                )
+                await monitor.stop()
 
 
 # ============================================================================

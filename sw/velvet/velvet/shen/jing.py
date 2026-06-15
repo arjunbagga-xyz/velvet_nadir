@@ -110,18 +110,38 @@ class Jing:
             scope: Memory scope for agent_memory ("public", "private").
             metadata: Additional metadata dict to attach.
         """
-        if not self._mem:
-            return
+        from velvet.privacy import PrivacyClassifier, PrivacyLevel
+        classifier = PrivacyClassifier()
+        level = classifier.classify(fact)
+        
+        # Determine if we can use Aether (hot tier)
+        use_aether = True
+        if level == PrivacyLevel.RESTRICTED:
+            use_aether = False
+            logger.info(f"[Jing] Bypassing Aether for RESTRICTED memory to prevent vector leakage")
+        elif self._is_cloud_embedder() and level > PrivacyLevel.PUBLIC:
+            use_aether = False
+            logger.info(f"[Jing] Bypassing Aether for {level.name} memory due to cloud embedding policy")
+            
+        extra_meta = metadata or {}
+        if scope:
+            extra_meta["scope"] = scope
+        extra_meta["privacy_level"] = int(level)
 
-        try:
-            messages = [{"role": role, "content": fact}]
-            extra_meta = metadata or {}
-            if scope:
-                extra_meta["scope"] = scope
-
-            self._mem.add(messages, agent_id="velvet", metadata=extra_meta)
-        except Exception as e:
-            logger.error(f"[Jing] Remember failed: {e}")
+        if use_aether and self._mem:
+            try:
+                messages = [{"role": role, "content": fact}]
+                self._mem.add(messages, agent_id="velvet", metadata=extra_meta)
+            except Exception as e:
+                logger.error(f"[Jing] Remember failed: {e}")
+        elif self._tartarus:
+            try:
+                import uuid
+                memory_id = str(uuid.uuid4())
+                self._tartarus.store(memory_id, fact, role=role, metadata=extra_meta)
+                logger.info(f"[Jing] Saved {level.name} memory directly to Tartarus")
+            except Exception as e:
+                logger.error(f"[Jing] Direct Tartarus store failed: {e}")
 
     async def replicate(self, payload: dict):
         """
@@ -195,6 +215,17 @@ class Jing:
         """Search only the local Aether (hot) store — no mesh, no Tartarus."""
         if not self._mem:
             return []
+
+        # Gate cloud embedding with classification
+        if self._is_cloud_embedder():
+            from velvet.privacy import PrivacyClassifier, PrivacyLevel
+            classifier = PrivacyClassifier()
+            level = classifier.classify(query)
+            if level > PrivacyLevel.PUBLIC:
+                logger.info(
+                    f"[Jing] Blocking cloud embedding query for {level.name} context"
+                )
+                return []
 
         try:
             results = self._mem.search(query, limit=limit)
@@ -461,6 +492,15 @@ class Jing:
         except Exception:
             # Fallback: just use the raw query words
             return query.split()
+
+    def _is_cloud_embedder(self) -> bool:
+        """Helper to check if the current PowerMem embedder is a cloud provider."""
+        try:
+            from velvet.shen.polymath import get_polymath
+            provider = get_polymath().build_memory_config().get("embedder", {}).get("provider")
+            return provider in ("openai", "google")
+        except Exception:
+            return False
 
     @property
     def is_persistent(self) -> bool:

@@ -73,24 +73,53 @@ class UniversalCloudLLMAdapter(LLMAdapter):
         images: list[str] = None
     ) -> LLMResponse:
         
-        # PrivacyGuard outbound check
+        # PrivacyGuard & Mirage Protocol Enforcement
         try:
-            from velvet.privacy import get_privacy_guard
-            guard = get_privacy_guard()
-            if guard:
-                # Filter/validate outbound text
+            from velvet.privacy import PrivacyClassifier, PrivacyLevel, PrivacyViolation
+            classifier = PrivacyClassifier()
+            max_level = PrivacyLevel.PUBLIC
+            for m in messages:
+                content = m.get("content", "")
+                if isinstance(content, str):
+                    level = classifier.classify(content)
+                    if level > max_level:
+                        max_level = level
+                        
+            if max_level == PrivacyLevel.RESTRICTED:
+                raise PrivacyViolation("RESTRICTED data cannot be sent to cloud")
+                
+            smap = None
+            scrambled_messages = messages
+            proxy = None
+            
+            if max_level >= PrivacyLevel.PERSONAL:
+                from velvet.mirage import MirageProxy, MirageMap
+                proxy = MirageProxy()
+                scrambled_messages = []
+                smap = MirageMap()
                 for m in messages:
-                    if not guard.is_safe_to_send(m.get("content", ""), destination="cloud"):
-                        logger.warning("[UniversalLLM] Outbound message blocked by PrivacyGuard")
-                        return LLMResponse("Error: Request blocked by PrivacyGuard security perimeter.", finish_reason="error")
+                    content = m.get("content", "")
+                    if isinstance(content, str) and content:
+                        scrambled_text, smap = proxy.scramble(content, smap)
+                        scrambled_messages.append({**m, "content": scrambled_text})
+                    else:
+                        scrambled_messages.append(m)
+        except PrivacyViolation:
+            raise
         except Exception as e:
-            logger.debug(f"PrivacyGuard check bypassed: {e}")
+            logger.debug(f"PrivacyGuard classification/scramble error: {e}")
+            scrambled_messages = messages
+            smap = None
+            proxy = None
 
         # Delegate to GoogleAIAdapter if provider is google
         if self._delegate:
-            return await self._delegate.generate(
-                messages, tools=tools, max_tokens=max_tokens, temperature=temperature, images=images
+            response = await self._delegate.generate(
+                scrambled_messages, tools=tools, max_tokens=max_tokens, temperature=temperature, images=images
             )
+            if proxy and smap and response.text:
+                response.text = proxy.rehydrate(response.text, smap)
+            return response
             
         await self._ensure_session()
         
@@ -105,7 +134,7 @@ class UniversalCloudLLMAdapter(LLMAdapter):
             
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": scrambled_messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": False,
@@ -149,6 +178,9 @@ class UniversalCloudLLMAdapter(LLMAdapter):
                         })
                         
                 text = message.get("content") or ""
+                if proxy and smap and text:
+                    text = proxy.rehydrate(text, smap)
+                    
                 finish_reason = choice.get("finish_reason", "stop")
                 if tool_calls:
                     finish_reason = "tool_calls"
@@ -169,11 +201,51 @@ class UniversalCloudLLMAdapter(LLMAdapter):
         max_tokens: int = 1024,
         temperature: float = 0.7,
     ) -> AsyncIterator[str]:
+        # Run classification for streaming delegate
+        try:
+            from velvet.privacy import PrivacyClassifier, PrivacyLevel, PrivacyViolation
+            classifier = PrivacyClassifier()
+            max_level = PrivacyLevel.PUBLIC
+            for m in messages:
+                content = m.get("content", "")
+                if isinstance(content, str):
+                    level = classifier.classify(content)
+                    if level > max_level:
+                        max_level = level
+                        
+            if max_level == PrivacyLevel.RESTRICTED:
+                raise PrivacyViolation("RESTRICTED data cannot be sent to cloud")
+                
+            smap = None
+            scrambled_messages = messages
+            proxy = None
+            
+            if max_level >= PrivacyLevel.PERSONAL:
+                from velvet.mirage import MirageProxy, MirageMap
+                proxy = MirageProxy()
+                scrambled_messages = []
+                smap = MirageMap()
+                for m in messages:
+                    content = m.get("content", "")
+                    if isinstance(content, str) and content:
+                        scrambled_text, smap = proxy.scramble(content, smap)
+                        scrambled_messages.append({**m, "content": scrambled_text})
+                    else:
+                        scrambled_messages.append(m)
+        except PrivacyViolation:
+            raise
+        except Exception as e:
+            logger.debug(f"PrivacyGuard classification/scramble stream error: {e}")
+            scrambled_messages = messages
+            smap = None
+            proxy = None
+
         if self._delegate:
-            async for chunk in self._delegate.stream(messages, max_tokens, temperature):
-                yield chunk
+            async for chunk in self._delegate.stream(scrambled_messages, max_tokens, temperature):
+                yield proxy.rehydrate(chunk, smap) if (proxy and smap) else chunk
             return
             
         # Fallback to standard generate for NVIDIA/OpenRouter stream
+        # self.generate will do its own classification, scrambling, and rehydration.
         response = await self.generate(messages, max_tokens=max_tokens, temperature=temperature)
         yield response.text

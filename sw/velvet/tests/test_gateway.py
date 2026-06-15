@@ -123,3 +123,65 @@ class TestGatewayOrchestration:
             assert "Processed hello" in received_speak
         finally:
             await gateway.stop()
+
+
+# ============================================================================
+# Gateway Privacy Integration Tests (Sprint 17)
+# ============================================================================
+
+class TestGatewayPrivacy:
+    """Tests for Gateway interaction with PrivacyClassifier and UniversalCloudLLMAdapter."""
+
+    @pytest.mark.asyncio
+    async def test_gateway_ingestion_classifies_input(self, mock_fabric):
+        from velvet.gateway import Gateway
+        from velvet.context import ContextManager
+        from velvet.privacy import PrivacyLevel
+        
+        gw = Gateway(context_manager=ContextManager(), max_workers=0, vision_enabled=False)
+        gw.yi = MagicMock()
+        gw.yi.dispatch = AsyncMock(return_value="mock response")
+        
+        await gw._process_input("My SSN is 111-22-3333")
+        assert gw.context.current_privacy_level == PrivacyLevel.SENSITIVE
+
+    @pytest.mark.asyncio
+    async def test_cloud_adapter_scrambles_personal_data(self):
+        from velvet.services.universal_llm import UniversalCloudLLMAdapter
+        from velvet.llm import LLMResponse
+        
+        mock_config = MagicMock()
+        mock_config.security.allow_google_adapter = True
+        
+        with patch("velvet.config.get_config", return_value=mock_config), \
+             patch("velvet.services.google_ai.GoogleAIAdapter") as MockGoogleAI:
+            
+            mock_google_inst = MagicMock()
+            mock_google_inst.generate = AsyncMock(return_value=LLMResponse("I will call Dr. Elena Novak.", "stop"))
+            MockGoogleAI.return_value = mock_google_inst
+            
+            adapter = UniversalCloudLLMAdapter(provider="google")
+            
+            messages = [{"role": "user", "content": "Call Dr. Amara Singh"}]
+            response = await adapter.generate(messages)
+            
+            called_args = MockGoogleAI.return_value.generate.call_args[0][0]
+            assert called_args[0]["content"] != "Call Dr. Amara Singh"
+            
+            assert "Dr. Amara Singh" in response.text
+
+    @pytest.mark.asyncio
+    async def test_cloud_adapter_rejects_restricted(self):
+        from velvet.services.universal_llm import UniversalCloudLLMAdapter
+        from velvet.privacy import PrivacyViolation
+        
+        mock_config = MagicMock()
+        mock_config.security.allow_google_adapter = True
+        
+        with patch("velvet.config.get_config", return_value=mock_config), \
+             patch("velvet.services.google_ai.GoogleAIAdapter"):
+            adapter = UniversalCloudLLMAdapter(provider="google")
+            messages = [{"role": "user", "content": "my password is supersecret"}]
+            
+            with pytest.raises(PrivacyViolation):
+                await adapter.generate(messages)

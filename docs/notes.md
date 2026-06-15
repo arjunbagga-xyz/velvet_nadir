@@ -4,6 +4,23 @@ Living document for deferred features, design ideas, and items not in the curren
 
 ---
 
+## 🚀 Session Handoff (June 15, 2026) -> Next Agent
+
+**Current State (End of Sprint 17):**
+- **Sprint 17 COMPLETE** — MVP Polish & Post-MVP Security Hardening:
+  - **The Mirage Protocol (`MirageProxy`):** Implemented in [mirage.py](file:///d:/Open%20Projects/seamless_computing/sw/velvet/velvet/mirage.py). Automatically scrambles personally identifiable information (PII) and sensitive fields (e.g. names, phone numbers, emails) before cloud LLM transmission, replacing them with semantically-consistent synthetic equivalents (e.g. Dr. Amara Singh -> Dr. Elena Novak). It dynamically rehydrates (restores) the original values on response from the cloud.
+  - **4-Level Privacy Classification:** Implemented in [privacy.py](file:///d:/Open%20Projects/seamless_computing/sw/velvet/velvet/privacy.py). Data classified into `PUBLIC`, `PERSONAL`, `SENSITIVE`, and `RESTRICTED`. Tagged outgoing and incoming messages via `VelvetMessage`.
+  - **Aadhaar & Passport Support:** Added regular expressions and keyword pattern matching in the `PrivacyClassifier` for Aadhaar card and Passport detection, categorizing them under `SENSITIVE`.
+  - **Basilisk Protocol RAM Enclave Integration:** Integrated `BasiliskEnclave` inside [universal_llm.py](file:///d:/Open%20Projects/seamless_computing/sw/velvet/velvet/services/universal_llm.py) to manage temporary mapping buffers in RAM for `PERSONAL` and `SENSITIVE` data processed via the Mirage Protocol.
+  - **Device-Bound Restricted Memory Sync:** Configured memory sync in [mesh_memory.py](file:///d:/Open%20Projects/seamless_computing/sw/velvet/velvet/shen/mesh_memory.py) to ensure that `RESTRICTED` data stays on the local device forever and is never shared across peers or cloud vectors. Gated Aether vector database insert/recall so that if cloud embedding is active, sensitive data routes only to local `Tartarus` FTS5 database to prevent cloud leak.
+  - **Hey Velvet Wake Word default:** Updated configurations to default to `"Hey Velvet"` as the zero-training wake word.
+- **Robust Test Coverage:** 90 tests passing, covering security, gateway routing, audio-vision, fabric routing, and memory.
+
+- **Notes/Future work - sync for RESTRICTED data:** We need to circle back and check if RESTRICTED data never leaves the device, or we have protocols for data sharing within the mesh. If backing up isn't enabled, this can cause the system to lose data if a device gets damaged. Perhaps we need to brainstorm a data sharing/backup sysyem, but first audit what we currently have.
+
+
+---
+
 ## 🚀 Session Handoff (June 12, 2026) -> Next Agent
 
 **Current State (End of Sprint 16):**

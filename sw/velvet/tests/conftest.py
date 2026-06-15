@@ -41,6 +41,15 @@ class LoopbackFabric:
             self._subscribers[topic] = []
         self._subscribers[topic].append(handler)
 
+    async def unsubscribe(self, topic: str, handler):
+        if topic in self._subscribers:
+            try:
+                self._subscribers[topic].remove(handler)
+            except ValueError:
+                pass
+            if not self._subscribers[topic]:
+                del self._subscribers[topic]
+
     async def publish(self, topic: str, payload: dict, correlation_id: str | None = None):
         # 1. Create real message
         msg = VelvetMessage(
@@ -144,3 +153,33 @@ def mock_registry():
         initial_trust_level=TrustLevel.TRUSTED
     )
     return mock
+
+
+@pytest.fixture(autouse=True)
+def mock_ner_model():
+    """Globally mock the NER model for testing to avoid transformers dependency."""
+    def mock_pipeline(text):
+        entities = []
+        if "Priya Kapoor" in text:
+            idx = text.find("Priya Kapoor")
+            entities.append({
+                "entity_group": "PER",
+                "word": "Priya Kapoor",
+                "start": idx,
+                "end": idx + len("Priya Kapoor"),
+                "score": 0.99
+            })
+        if "Dr. Amara Singh" in text:
+            idx = text.find("Dr. Amara Singh")
+            entities.append({
+                "entity_group": "PER",
+                "word": "Dr. Amara Singh",
+                "start": idx,
+                "end": idx + len("Dr. Amara Singh"),
+                "score": 0.99
+            })
+        return entities
+
+    from unittest.mock import patch
+    with patch("velvet.mirage.PIIDetector._load_ner_model", return_value=mock_pipeline):
+        yield
