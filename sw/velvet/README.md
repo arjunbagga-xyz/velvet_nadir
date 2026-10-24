@@ -1,3 +1,44 @@
+# Velvet Nadir - Project Shen Architecture
+
+Velvet Nadir is a personal, decentralized ambient AI operating system with distributed sensing, multi-LLM orchestration, universal device mesh, and military-grade privacy defenses.
+
+### Core Cognitive Pipeline
+- **Gateway**: Async entry point with bounded request queue (`maxsize=50`), decoupled background TTS worker, and modality health probes.
+- **Yi (意 / Intent & Dispatch)**: Intent routing, conversation history tracking, and macro-repetition detection (`SequenceMatcher` over last 5 turns).
+- **Po (魄 / Fast Reflexes)** & **Hun (魂 / Deep Reasoning)**: Dual-stream cognitive engine. `Po` executes fast sub-second tool calls; `Hun` handles deep multi-step planning and reflection.
+- **Jing (精 / Memory Subsystem)**: Multi-tier memory backed by MemPalace KnowledgeGraph:
+  - **Aether (Hot Tier)**: In-memory working context.
+  - **Mnemosyne (Warm Tier)**: Vector embeddings for semantic search.
+  - **Tartarus (Cold Tier)**: SQLite cold archive for task histories and honeypot forensics.
+
+### Reliability & Resilience Subsystem (`velvet.reliability`)
+- 7-Stage exception classifier, non-destructive JSON/Pydantic argument coercion, and truncated tool-call repair.
+- Automatic retry with exponential backoff and node cooldowns across the mesh.
+- Thinking block scrubbing (`<think>...</think>`), sliding-window token repetition guard, and pre-execution intent logging.
+
+### Kanban Governance & Verification
+- Strict Kanban task ownership, multi-tier persistence DAG, blocker escalation rule (>=3 blocks escalate to `BLOCKED_TRIAGE`), and independent mesh model-judge verification (`GoalJudge`).
+
+### Privacy, 4-Track Honeypot & Intelligence Subsystem (`velvet.privacy`)
+- **EgressGuard**: System-level outbound filter for metadata stripping, stylometric noise (phantom only), and adversarial media perturbation (`PerturbationEngine`).
+- **4-Track Honeypot Inversion**: Converts standard ports (22, 80, 443, etc.) into forensic tarpits; real services run on high, randomized ports with stealth OS firewall rules (silent `DROP`).
+- **Zero-Knowledge Credential Isolation**: Bloom filter guarantees zero collision between honeypot secrets and real vault keys.
+- **NarrativeRadar**: Intelligence radar correlating physical telemetry (USGS, FIRMS, OpenSky, AISStream, CelesTrak, TeleGeography, Launch Library 2, NOAA) with social narrative velocity spikes, detecting astroturf campaigns and mesh hardware CVE exposures.
+
+### Verification Test Suites
+```bash
+# Run complete test harness
+python -m pytest tests/test_reliability.py tests/test_governance.py tests/test_skills_evolution.py tests/test_privacy_honeypots.py tests/test_narrative_radar.py tests/test_breathtasks_schedule.py tests/test_device_exploration.py -v
+```
+
+
+
+---
+
+> **HISTORICAL CONTENT BELOW** — The following was the original document from an earlier phase of the project.
+
+---
+
 # 🟣 Velvet Nadir
 
 > Personal AI assistant with distributed sensing, multi-LLM orchestration, and universal device mesh

@@ -19,6 +19,7 @@ __all__ = [
     "LocusConfig",
     "BasiliskConfig",
     "DisplayConfig",
+    "PrivacyConfig",
     "VelvetConfig",
     "get_config",
     "load_config",
@@ -62,6 +63,8 @@ class SecurityConfig(BaseSettings):
     
     allow_cloud_adapters: bool = False        # Explicit opt-in for cloud LLMs
     allow_google_adapter: bool = False        # Deprecated alias
+    allow_host_exec: bool = False             # Explicit opt-in for host OS command execution
+    allow_host_gui: bool = False              # Explicit opt-in for host OS GUI automation
     mesh_secret: str = ""                     # Shared secret for HMAC message signing
     require_signed_messages: bool = True      # HMAC on VelvetMessage (default: on)
     certs_dir: str = "~/.velvet/certs"        # TLS certificate storage directory
@@ -275,6 +278,16 @@ class DisplayConfig(BaseSettings):
     dashboard_path: str = ""        # Auto-resolved if empty
 
 
+class PrivacyConfig(BaseSettings):
+    """Privacy and egress guard settings."""
+    model_config = SettingsConfigDict(env_prefix="VELVET_PRIVACY_")
+    
+    strength: str = "balanced" # subtle, balanced, aggressive
+    style_guard_enabled: bool = True
+    metadata_strip_enabled: bool = True
+    perturbation_enabled: bool = True
+
+
 class VelvetConfig(BaseSettings):
     """Main configuration aggregating all subsystems."""
     model_config = SettingsConfigDict(
@@ -299,6 +312,7 @@ class VelvetConfig(BaseSettings):
     locus: LocusConfig = Field(default_factory=LocusConfig)
     basilisk: BasiliskConfig = Field(default_factory=BasiliskConfig)
     display: DisplayConfig = Field(default_factory=DisplayConfig)
+    privacy: PrivacyConfig = Field(default_factory=PrivacyConfig)
     
     # Global settings
     debug: bool = False

@@ -66,6 +66,7 @@ class MessageType(Enum):
     
     # Gateway control
     CANCEL_REQUEST = "gateway/cancel"
+    ESTOP = "mesh/estop"
     
     # Mesh: Device Registry
     MESH_DEVICE_ANNOUNCE = "mesh/device/announce"

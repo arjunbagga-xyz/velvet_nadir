@@ -2,8 +2,8 @@
 
 > Comprehensive documentation of all work completed on the personal AI system
 
-**Last Updated:** June 12, 2026  
-**Overall Progress:** ~98% to MVP, ~75% to Full Vision
+**Last Updated:** July 7, 2026  
+**Overall Progress:** 100% to MVP, ~90% to Full Vision
 
 ---
 
@@ -58,15 +58,30 @@ Velvet Nadir is a personal AI assistant designed to run entirely on local hardwa
 | Mesh Memory Fan-out | `mesh_recall` distributed recall across mesh |
 | People Recognition | Xiàng facial/voice recognition integration (VisionMonitor-wired in Sprint 16) |
 | Spatial Awareness | Locus engine + Triangulation geofence learning |
+| Reliability & 17 LLM Defenses | `velvet.reliability`: 7-stage classifier, coercion, repair, repetition guard |
+| Kanban Governance & Goal Judge | `task_graph.py`, `shen/goal_judge.py`, `shen/stop_gates.py`: Blocker escalation, independent judge |
+| Skill System Evolution | `skills/base.py`: CAS-restore, scorecard auto-promotion/rollback, `MeshSkillSync` |
+| 4-Track Honeypot Inversion | `velvet.privacy`: 4 interconnected deception tracks, tarpits, Tartarus forensics |
+| Zero-Knowledge Credential Isolation | `velvet.privacy.cred_factory`: Bloom filter proven zero collisions with real secrets |
+| Stealth Firewall & Port Rotation | `velvet.privacy.port_rotation`, `firewall.py`: 12h scheduled & <500ms emergency rotation |
+| NarrativeRadar Intelligence | `velvet.privacy.narrative_radar`: 8 physical feeds, correlation, Chao1 demographic virality |
+| Hardware NL Specs & AI Exploration | `devices.py`, `skills/device_explore.py`: 4-step Vidya AST sandbox & TrustGate |
 | Biometric Security Gate | Non-agentic `TrustGate` enforcement for device trust |
 | Resilient Embeddings | Self-healing embedding waterfall (Ollama -> vLLM -> ONNX -> Cloud) (Sprint 16) |
 | Universal Cloud LLM | Unified Google/NVIDIA/OpenRouter adapter under Security Config gate (Sprint 16) |
+| Relational Mirage Scrambling | Dynamic identity clustering and PII comparative mapping in Mirage (Sprint 17) |
+| 4-Level Privacy Classification | Complete implementation of 4-level classification (PUBLIC, PERSONAL, SENSITIVE, RESTRICTED) (Sprint 17) |
+| Limen Gateway & MCP | Securing external A2A agents and remote/local MCP server tool calls (Sprint 18) |
+| Tín Phù Reconnection Sync | Cryptographic vector state validation and structural Syzygy merge (Sprint 18) |
+| Occam's Razor Arbitration | Asynchronous LLM-mediated database conflict resolution under Xi (Sprint 18) |
+| Credentials & Local Fallback | Rotating credential pools, rate-limit cooldown, and local modelfallback broadcasts (Sprint 18) |
+| CUA Sandbox Integration | Automated execution of Click/Type/Screenshot inside OS sandbox environments (Sprint 18) |
+| Model Specializations | Online chatbot arena ELO-score tracking and specialized model routing (Sprint 18) |
 
 ### ⚠️ In Progress / Partial
 
 - Custom "Hey Velvet" wake word training
 - Start discovery service by default
-- 4-level privacy classification (currently 2-level perimeter in PrivacyGuard)
 
 ### ❌ Not Started
 
@@ -97,6 +112,9 @@ Velvet Nadir is a personal AI assistant designed to run entirely on local hardwa
 | 14 | Basilisk Protocol (Secure P2P RPC) | ✅ Complete |
 | 15 | UI Dashboard & Zenoh Wildcard Routing | ✅ Complete |
 | 16 | Cognitive Repair, Self-Healing Embeddings & Cloud LLM | ✅ Complete |
+| 17 | Relational Scrambling & 4-Level Privacy Classification | ✅ Complete |
+| 18 | Secure Limen Gateways, Causal Logging Reconnections, and Model Specializations | ✅ Complete |
+| 22 | Phase 3 Kickoff: Context-Aware Routing, Firmware Vault, CEO Spawning | 🟡 In Progress |
 
 ---
 
@@ -324,27 +342,27 @@ d:\Open Projects\seamless_computing\sw\velvet\
 │   ├── agents.py          # Agent hierarchy + orchestration
 │   ├── audio.py           # Audio pipeline (VAD, STT, TTS)
 │   ├── config.py          # Pydantic config + MemoryConfig + XiConfig
-│   ├── context.py         # Context management
+│   ├── context.py         # Context management + Gated Compression
+│   ├── credentials.py     # Rotating credential pools & local fallbacks
 │   ├── devices.py         # Device registry
 │   ├── drivers.py         # Hardware drivers
 │   ├── fabric.py          # Zenoh fabric
-│   ├── gateway.py         # Central gateway + Xi lifecycle
+│   ├── gateway.py         # Central gateway + Xi lifecycle + Limen routing
 │   ├── inference.py       # Multi-backend inference
+│   ├── limen.py           # Limen Gateway (A2A, local/remote MCP)
 │   ├── llm.py             # LLM adapters
 │   ├── main.py            # CLI entry point
 │   ├── memory.py          # Legacy memory (ChromaDB + SQLite)
-│   ├── models.py          # Model registry
+│   ├── model_benchmarks.json # Chatbot Arena ELO rankings cache
+│   ├── models.py          # Model registry & specialized ELO routing
 │   ├── monitors.py        # Stream monitors
 │   ├── onboarding.py      # Device onboarding
-│   ├── devices.py         # Hardware registry
-│   ├── privacy.py         # PrivacyGuard
+│   ├── privacy.py         # PrivacyGuard (4-level classification)
 │   ├── scan.py            # Network scanning
 │   ├── tool_parsing.py    # Tool call parsing
-│   ├── example_skills/
-│   │   ├── builtin.py     # Core skills
-│   │   └── mesh.py        # Mesh skills
+│   ├── trajectory.py      # Dual-track trajectory logs
 │   ├── services/
-│   │   ├── google_ai.py   # Google AI adapter (to be removed)
+│   │   ├── google_ai.py   # Google AI adapter
 │   │   └── llm_service.py # LLM service layer
 │   ├── shen/              # Project Shen (cognitive architecture)
 │   │   ├── __init__.py    # Exports
@@ -353,8 +371,9 @@ d:\Open Projects\seamless_computing\sw\velvet\
 │   │   ├── hun.py         # Deep reasoning
 │   │   ├── jing.py        # Persistent memory (PowerMem)
 │   │   ├── polymath.py    # Hardware intel
-│   │   ├── tartarus.py    # Cold storage
-│   │   ├── mesh_memory.py # Hive mind sync
+│   │   ├── tartarus.py    # Cold storage (Sutra causal logging table)
+│   │   ├── mesh_memory.py # Hive mind sync & Tín Phù signatures
+│   │   ├── occam.py       # Occam's Razor background conflict arbitration
 │   │   ├── xi.py          # Background scheduler
 │   │   ├── fuxi.py        # Consolidation task
 │   │   ├── agni.py        # Purification task
@@ -364,11 +383,15 @@ d:\Open Projects\seamless_computing\sw\velvet\
 │   │   ├── device_watchdog.py # Health monitor task
 │   │   └── saraswati.py   # Skill learning pipeline
 │   └── skills/
-│       ├── __init__.py    # @skill decorator + registry
+│       ├── __init__.py    # SkillRegistry (L0/L1 load support)
+│       ├── base.py        # Abstract Skill definitions
+│       ├── markdown.py    # SKILL.md instruction parser
+│       ├── armature.py    # Preprocessor parameter template interpolator
+│       ├── cua_skill.py   # CUA OS click/type/screenshot sandbox
 │       ├── basilisk_skill.py # Secure P2P skills
 │       ├── network_ops.py # Network skills
 │       └── vision_skill.py # Vision skills
-├── tests/                 # 22 test files, 128+ tests
+├── tests/                 # 26 test files, 120+ tests
 └── pyproject.toml
 ```
 

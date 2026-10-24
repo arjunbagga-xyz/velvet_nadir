@@ -135,6 +135,12 @@ async def start_velvet(
             elif adapter_type == "google":
                 adapter_kwargs["api_key"] = config.llm.google_api_key
             
+            # Initialize Credential Pool
+            from .credentials import get_credential_pool
+            cred_pool = get_credential_pool()
+            if config.llm.google_api_key:
+                cred_pool.add_keys("google", [config.llm.google_api_key])
+            
             # Create the adapter via factory
             adapter = create_llm_adapter(adapter_type, **adapter_kwargs)
             
@@ -147,6 +153,9 @@ async def start_velvet(
             except Exception as mesh_err:
                 logger.warning(f"Mesh LLM unavailable ({mesh_err}), using direct adapter")
                 logger.info(f"LLM enabled: Direct Mode ({adapter_type}/{model})")
+            
+            from .llm import set_default_adapter
+            set_default_adapter(adapter)
             
             async def llm_inference_fn(context: str, messages: list, tools: list | None):
                 full_messages = [
@@ -173,8 +182,13 @@ async def start_velvet(
             
             start_discovery_service()
             logger.info("Discovery service and Hardware Registry started")
+            
+            # Initialize Model Registry alongside Hardware Registry
+            from .models import init_model_registry
+            await init_model_registry(with_fabric=True)
+            logger.info("Model Registry started")
         except Exception as e:
-            logger.warning(f"Could not start discovery service: {e}")
+            logger.warning(f"Could not start discovery/model service: {e}")
 
     # 2. Standalone Vision (if requested explicitly)
     if run_vision:
@@ -234,6 +248,13 @@ async def start_velvet(
             # 1. Jing (Memory)
             jing = Jing()
             
+            # 1b. Mesh Memory Replication (Anamnesis / Syzygy)
+            from .shen.mesh_memory import MeshMemorySync
+            from .privacy import get_privacy_guard
+            mesh_sync = MeshMemorySync(jing=jing, privacy_guard=get_privacy_guard())
+            await mesh_sync.start()
+            jing.mesh_sync = mesh_sync
+            
             # 2. Xiang (Perception)
             xiang = XiangEngine(jing=jing)
             
@@ -255,11 +276,22 @@ async def start_velvet(
             logger.error(f"Failed to start intelligence subsystems: {e}")
         
         # Import and register skills (only needed if Gateway is running)
-        from .example_skills import builtin  # noqa: F401 - imports register skills
+        from .skills import builtin, mesh  # noqa: F401 - imports register skills
         from . import onboarding  # Registers scan/onboard skills
         from .skills import vision_skill # noqa: F401
         from .skills import network_ops # noqa: F401 - Registers scan/deploy skills
         from .skills import basilisk_skill # noqa: F401 - Registers Basilisk Protocol skills
+        from .skills import cua_skill # noqa: F401 - Registers CUA Sandbox Skill
+        from .skills import load_markdown_skills
+        
+        # Load Markdown skill bundles from disk
+        try:
+            import os
+            skills_cfg = getattr(config, "skills", None)
+            md_dir = getattr(skills_cfg, "markdown_dir", os.path.join(os.path.dirname(__file__), "skills")) if skills_cfg else os.path.join(os.path.dirname(__file__), "skills")
+            load_markdown_skills(md_dir)
+        except Exception as e:
+            logger.warning(f"Could not load markdown skills: {e}")
         
         # 6. Display UI Bridge (Sprint 14)
         if config.display.enabled:
@@ -279,6 +311,33 @@ async def start_velvet(
                 logger.info("Display Bridge started")
             except Exception as e:
                 logger.error(f"Failed to start Display Bridge: {e}")
+
+        # 7. Security, Deception & Privacy Subsystems
+        try:
+            from .privacy.port_rotation import PortRotator
+            from .privacy.honeypot_ports import HoneypotPortBinder
+            from .privacy.egress_guard import EgressGuard
+            from .widget_library import WidgetLibrary
+
+            port_rotator = PortRotator()
+            port_rotator.start_scheduler(interval_hours=12.0)
+
+            honeypot_binder = HoneypotPortBinder(port_map=port_rotator.port_map)
+            await honeypot_binder.start()
+
+            egress_guard = EgressGuard()
+            widget_lib = WidgetLibrary()
+
+            # Attach to gateway for runtime access & clean shutdown
+            gateway.port_map = port_rotator.port_map
+            gateway.port_rotator = port_rotator
+            gateway.honeypot_binder = honeypot_binder
+            gateway.egress_guard = egress_guard
+            gateway.widget_library = widget_lib
+
+            logger.info("Security subsystems (HoneypotPortBinder, PortRotator, EgressGuard, WidgetLibrary) started")
+        except Exception as e:
+            logger.warning(f"Could not initialize security & deception subsystems: {e}")
     
     logger.info("Velvet Nadir started successfully")
     return gateway
@@ -288,6 +347,10 @@ async def stop_velvet() -> None:
     """Stop all Velvet systems."""
     try:
         gateway = get_gateway()
+        if hasattr(gateway, "honeypot_binder") and gateway.honeypot_binder:
+            await gateway.honeypot_binder.stop()
+        if hasattr(gateway, "port_rotator") and gateway.port_rotator:
+            await gateway.port_rotator.stop()
         await gateway.stop()
     except RuntimeError:
         pass

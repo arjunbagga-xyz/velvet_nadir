@@ -21,7 +21,9 @@ class GoogleAIAdapter(LLMAdapter):
     """
     def __init__(self, model: str = "gemini-3-flash-preview", api_key: str = None, **kwargs):
         self.model = model
-        self.api_key = api_key or os.environ.get("VELVET_LLM_GOOGLE_API_KEY")
+        from velvet.credentials import get_credential_pool
+        pool = get_credential_pool()
+        self.api_key = api_key or pool.get_api_key("google") or os.environ.get("VELVET_LLM_GOOGLE_API_KEY")
         if not self.api_key:
             raise ValueError("Google API key missing.")
             
@@ -114,6 +116,15 @@ class GoogleAIAdapter(LLMAdapter):
             return LLMResponse(text=text, tool_calls=tool_calls, finish_reason=finish_reason)
             
         except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "quota" in err_str or "rate limit" in err_str or "exhausted" in err_str:
+                logger.warning(f"[GoogleAI] Rate limit or quota error detected: {e}")
+                from velvet.credentials import get_credential_pool
+                pool = get_credential_pool()
+                if self.api_key:
+                    pool.trigger_cooldown("google", self.api_key)
+                if not pool.get_api_key("google"):
+                    pool.adapt_to_local_fallback()
             logger.error(f"GoogleAI error: {e}")
             return LLMResponse(text=f"Error: {e}", finish_reason="error")
 

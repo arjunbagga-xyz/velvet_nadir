@@ -59,6 +59,8 @@ class DisplayBridge:
         self.site = None
         
         self.active_websockets: set[web.WebSocketResponse] = set()
+        self.device_websockets: dict[str, set[web.WebSocketResponse]] = {}
+        self.recent_events: list[dict] = []  # Ring buffer for event logs (max 100)
         
         # Determine paths
         if self.config.dashboard_path:
@@ -122,6 +124,7 @@ class DisplayBridge:
         await self.fabric.subscribe("vision/**", self._handle_event)
         await self.fabric.subscribe("skill/**", self._handle_event)
         await self.fabric.subscribe("context/**", self._handle_event)
+        await self.fabric.subscribe("display/**", self._handle_display_event)
 
     async def stop(self):
         """Stop the display server."""
@@ -171,6 +174,10 @@ class DisplayBridge:
                     logger.error(f"[DisplayBridge] WebSocket connection closed with exception {ws.exception()}")
         finally:
             self.active_websockets.discard(ws)
+            for dev_id, sockets in list(self.device_websockets.items()):
+                sockets.discard(ws)
+                if not sockets:
+                    self.device_websockets.pop(dev_id, None)
             logger.info(f"[DisplayBridge] WebSocket connection closed from {request.remote}")
             
         return ws
@@ -191,6 +198,85 @@ class DisplayBridge:
                 logger.info(f"[DisplayBridge] Successfully sent '{msg_type}' to WS client")
             except Exception as e:
                 logger.error(f"[DisplayBridge] Failed to send push message: {e}")
+
+    def get_best_display_device(self, user_context: dict | None = None) -> str | None:
+
+        """
+        Determine the optimal physical display target for the user based on
+        spatial proximity (LocusEngine), sensor activity (microphones/cameras), and display capability.
+        """
+        candidate_devices = [d for d in self.registry.get_online_devices() if d.display_type != "none"]
+        if not candidate_devices:
+            return None
+
+        # Check if LocusEngine has spatial data for user
+        closest_id = None
+        if self.locus and hasattr(self.locus, "get_closest_device"):
+            try:
+                user_pos = user_context.get("position") if user_context else None
+                closest = self.locus.get_closest_device(user_pos)
+                if closest:
+                    closest_id = closest.device_id
+            except Exception as e:
+                logger.debug(f"[DisplayBridge] Spatial locus query failed: {e}")
+
+        if closest_id and closest_id in [d.device_id for d in candidate_devices]:
+            logger.info(f"[DisplayBridge] Spatial Router selected device via Locus: {closest_id}")
+            return closest_id
+
+        # Sensor context heuristic: check if recent chat/audio came from a specific device
+        if user_context and "source_device" in user_context:
+            src = user_context["source_device"]
+            if src in [d.device_id for d in candidate_devices]:
+                logger.info(f"[DisplayBridge] Spatial Router selected device via sensor context: {src}")
+                return src
+
+        # Fallback: prefer host desktop over mobile if connected
+        for d in candidate_devices:
+            if d.is_host or "desktop" in d.display_type:
+                return d.device_id
+
+        return candidate_devices[0].device_id
+
+    async def push_context_aware_ui(self, msg_type: str, data: dict, user_context: dict | None = None):
+        """Route UI widget payload to the contextually optimal screen."""
+        best_device_id = self.get_best_display_device(user_context)
+        if best_device_id:
+            logger.info(f"[DisplayBridge] Context-aware routing targeted UI payload to screen: {best_device_id}")
+            await self.push_to_device(best_device_id, msg_type, data)
+        else:
+            await self.push_to_all(msg_type, data)
+
+    async def push_to_device(self, device_id: str, msg_type: str, data: dict):
+        """Push a JSON message targeted to websockets registered for a specific device."""
+        sockets = self.device_websockets.get(device_id)
+        if not sockets:
+            logger.info(f"[DisplayBridge] push_to_device: No sockets registered for device '{device_id}', falling back to push_to_all")
+            await self.push_to_all(msg_type, data)
+            return
+
+        payload = {"type": msg_type, **data}
+        for ws in set(sockets):
+            try:
+                await ws.send_json(payload)
+            except Exception as e:
+                logger.error(f"[DisplayBridge] Failed to push to device '{device_id}': {e}")
+
+
+    async def push_notification(self, level: str, title: str, message: str, icon: str = None, skill_data: dict = None):
+        """Push a notification (toast or skill approval) to the UI."""
+        payload = {
+            "level": level,  # info, success, warning, danger
+            "title": title,
+            "message": message,
+        }
+        if icon:
+            payload["icon"] = icon
+        if skill_data:
+            payload["type"] = "skill_approval"
+            payload["skillData"] = skill_data
+            
+        await self.push_to_all("notification", {"data": payload})
 
     def _build_full_snapshot(self) -> dict:
         """Build a complete state snapshot for newly connected clients."""
@@ -222,7 +308,7 @@ class DisplayBridge:
             "devices": devices,
             "workspaces": workspaces,
             "agents": agents,
-            "events": [],
+            "events": self.recent_events,
             "memory": memory_graph
         }
 
@@ -241,6 +327,9 @@ class DisplayBridge:
         payload = msg.payload if isinstance(msg.payload, dict) else {"text": str(msg.payload)}
         log_ev = serialize_log_event(msg_id, msg.timestamp, msg.source_device, msg.msg_type, payload.get("text", str(msg.payload)))
         logger.info(f"[DisplayBridge] Serialized log event: {log_ev}")
+        self.recent_events.append(log_ev)
+        if len(self.recent_events) > 100:
+            self.recent_events.pop(0)
         await self.push_to_all("event.log", {"data": log_ev})
         
     async def _handle_chat_out(self, msg: VelvetMessage):
@@ -249,6 +338,13 @@ class DisplayBridge:
         await self.push_to_all("chat.response", {"data": {"role": "agent", "text": text}})
         # Also let UI know it's speaking
         await self.push_to_all("gateway.state", {"state": "speaking"})
+
+    async def _handle_display_event(self, msg: VelvetMessage):
+        """Handle specific display subsystem events like UI widget renders."""
+        if msg.msg_type == "ui.widget.render":
+            logger.info(f"[DisplayBridge] Context-routing ui.widget.render to UI: {msg.payload}")
+            ctx = {"source_device": msg.source_device}
+            await self.push_context_aware_ui("ui.widget.render", {"data": msg.payload.get("data", {})}, user_context=ctx)
 
     # --- Client Event Handlers (UI → Backend) ---
 
@@ -292,6 +388,130 @@ class DisplayBridge:
                 if a:
                     await self.push_to_all("agent.update", {"data": serialize_agent_for_ui(a)})
                     
+        elif msg_type == "device.register":
+            dev_id = data.get("device_id")
+            if dev_id:
+                if dev_id not in self.device_websockets:
+                    self.device_websockets[dev_id] = set()
+                self.device_websockets[dev_id].add(ws)
+                logger.info(f"[DisplayBridge] WebSocket registered for device: {dev_id}")
+                
+        elif msg_type == "device.commandeer":
+            dev_id = data.get("device_id")
+            commandeer = data.get("commandeer", True)
+            dev = self.registry.get_device(dev_id)
+            if dev:
+                dev.metadata["commandeered"] = commandeer
+                await self.push_to_all("device.update", {"data": serialize_device_for_ui(dev, self.locus)})
+                logger.info(f"[DisplayBridge] Device {dev_id} commandeer set to {commandeer}")
+
+        elif msg_type == "device.files.list":
+            dev_id = data.get("device_id")
+            path = data.get("path", ".")
+            try:
+                import os
+                target_path = Path(path)
+                if not target_path.is_absolute():
+                    target_path = self.static_dir / path
+                files = []
+                if target_path.exists() and target_path.is_dir():
+                    for entry in os.scandir(target_path):
+                        stat = entry.stat()
+                        files.append({
+                            "name": entry.name,
+                            "is_dir": entry.is_dir(),
+                            "size": stat.st_size if not entry.is_dir() else 0,
+                            "date_modified": stat.st_mtime,
+                            "ext": os.path.splitext(entry.name)[1].lower() if not entry.is_dir() else ""
+                        })
+                await ws.send_json({
+                    "type": "device.files.list_results",
+                    "data": {"device_id": dev_id, "path": str(target_path), "files": files}
+                })
+            except Exception as e:
+                logger.error(f"[DisplayBridge] Failed to list files: {e}")
+                await ws.send_json({
+                    "type": "device.files.list_results",
+                    "data": {"device_id": dev_id, "path": path, "files": [], "error": str(e)}
+                })
+
+        elif msg_type == "device.files.open":
+            path = data.get("path")
+            try:
+                import os, platform, subprocess
+                target_path = Path(path)
+                if not target_path.is_absolute():
+                    target_path = self.static_dir / path
+                
+                if target_path.exists():
+                    if platform.system() == 'Windows':
+                        os.startfile(str(target_path))
+                    elif platform.system() == 'Darwin':
+                        subprocess.Popen(['open', str(target_path)])
+                    else:
+                        subprocess.Popen(['xdg-open', str(target_path)])
+                    
+                    await self.push_notification("info", "File Explorer", f"Opening {target_path.name} on host machine.")
+                else:
+                    await self.push_notification("danger", "File Explorer", f"File not found: {path}")
+            except Exception as e:
+                logger.error(f"[DisplayBridge] Failed to open file: {e}")
+                await self.push_notification("danger", "File Explorer", f"Error opening file: {e}")
+
+        elif msg_type == "device.files.save":
+            path = data.get("path")
+            content = data.get("content", "")
+            try:
+                if path:
+                    target_file = Path(path)
+                    if not target_file.is_absolute():
+                        target_file = self.static_dir / path
+                    target_file.write_text(content, encoding="utf-8")
+                    await ws.send_json({
+                        "type": "device.files.save_results",
+                        "data": {"path": str(target_file), "success": True}
+                    })
+            except Exception as e:
+                logger.error(f"[DisplayBridge] Failed to save file: {e}")
+                await ws.send_json({
+                    "type": "device.files.save_results",
+                    "data": {"path": path, "success": False, "error": str(e)}
+                })
+
+        elif msg_type == "device.stream.toggle":
+            dev_id = data.get("device_id")
+            stream_type = data.get("stream_type", "camera") # camera | screen
+            active = data.get("active", True)
+            dev = self.registry.get_device(dev_id)
+            if dev:
+                dev.metadata[f"stream_{stream_type}"] = active
+                await self.push_to_all("device.update", {"data": serialize_device_for_ui(dev, self.locus)})
+
+        elif msg_type == "workspace.assign":
+            ws_id = data.get("workspace_id")
+            item_type = data.get("item_type") # device | agent
+            item_id = data.get("item_id")
+            if ws_id and item_type and item_id:
+                ws_obj = self.context.get_workspace(ws_id)
+                if ws_obj:
+                    if item_type == "device":
+                        if item_id not in ws_obj.active_devices:
+                            ws_obj.active_devices.append(item_id)
+                    elif item_type == "agent":
+                        if item_id not in ws_obj.active_agents:
+                            ws_obj.active_agents.append(item_id)
+                    await self.push_to_all("workspace.update", {"data": serialize_workspace_for_ui(ws_obj, {}, {}, {})})
+
+        elif msg_type == "widget.action":
+            action = data.get("action")
+            widget_id = data.get("widget_id")
+            payload = data.get("payload", {})
+            logger.info(f"[DisplayBridge] Widget Action triggered: widget={widget_id}, action={action}, payload={payload}")
+            await self.fabric.publish(
+                topic=f"action/widget/{widget_id}/{action}",
+                payload={"action": action, "widget_id": widget_id, "payload": payload}
+            )
+
         elif msg_type == "jing.search":
             query = data.get("query", "")
             if query and self.jing:

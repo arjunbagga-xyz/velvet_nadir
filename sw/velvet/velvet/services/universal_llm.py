@@ -33,20 +33,24 @@ class UniversalCloudLLMAdapter(LLMAdapter):
                 "Set VELVET_SECURITY_ALLOW_CLOUD_ADAPTERS=true in velvet.toml to opt in."
             )
             
+        from velvet.credentials import get_credential_pool
+        pool = get_credential_pool()
+
         if self.provider == "google":
             from velvet.services.google_ai import GoogleAIAdapter
             # Fallback model for Google
             self.model = self.model or "gemini-2.5-flash"
+            self.api_key = self.api_key or pool.get_api_key("google") or os.environ.get("VELVET_LLM_GOOGLE_API_KEY")
             self._delegate = GoogleAIAdapter(model=self.model, api_key=self.api_key, **kwargs)
         elif self.provider == "nvidia":
             self.model = self.model or "nvidia/llama-3.3-nemotron-super-49b-v1"
-            self.api_key = self.api_key or os.environ.get("VELVET_LLM_NVIDIA_API_KEY")
+            self.api_key = self.api_key or pool.get_api_key("nvidia") or os.environ.get("VELVET_LLM_NVIDIA_API_KEY")
             self.base_url = "https://integrate.api.nvidia.com/v1"
             if not self.api_key:
                 raise LLMAdapterError("NVIDIA API key missing (VELVET_LLM_NVIDIA_API_KEY).")
         elif self.provider == "openrouter":
             self.model = self.model or "google/gemini-2.5-flash"
-            self.api_key = self.api_key or os.environ.get("VELVET_LLM_OPENROUTER_API_KEY")
+            self.api_key = self.api_key or pool.get_api_key("openrouter") or os.environ.get("VELVET_LLM_OPENROUTER_API_KEY")
             self.base_url = "https://openrouter.ai/api/v1"
             if not self.api_key:
                 raise LLMAdapterError("OpenRouter API key missing (VELVET_LLM_OPENROUTER_API_KEY).")
@@ -140,6 +144,10 @@ class UniversalCloudLLMAdapter(LLMAdapter):
             "stream": False,
         }
         
+        response_format = kwargs.get("response_format")
+        if response_format:
+            payload["response_format"] = response_format
+            
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
@@ -152,6 +160,14 @@ class UniversalCloudLLMAdapter(LLMAdapter):
             ) as resp:
                 if resp.status != 200:
                     error_text = await resp.text()
+                    if resp.status == 429 or "quota" in error_text.lower() or "rate limit" in error_text.lower():
+                        logger.warning(f"[UniversalLLM] Rate limit or quota error detected for {self.provider}: {error_text}")
+                        from velvet.credentials import get_credential_pool
+                        pool = get_credential_pool()
+                        if self.api_key:
+                            pool.trigger_cooldown(self.provider, self.api_key)
+                        if not pool.get_api_key(self.provider):
+                            pool.adapt_to_local_fallback()
                     logger.error(f"[UniversalLLM] API error ({self.provider}): {error_text}")
                     return LLMResponse(text=f"Error: {error_text}", finish_reason="error")
                     
@@ -192,6 +208,14 @@ class UniversalCloudLLMAdapter(LLMAdapter):
                     tokens_used=data.get("usage", {}).get("total_tokens", 0)
                 )
         except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "quota" in err_str or "rate limit" in err_str:
+                from velvet.credentials import get_credential_pool
+                pool = get_credential_pool()
+                if self.api_key:
+                    pool.trigger_cooldown(self.provider, self.api_key)
+                if not pool.get_api_key(self.provider):
+                    pool.adapt_to_local_fallback()
             logger.error(f"[UniversalLLM] Failed request: {e}")
             return LLMResponse(text=f"Error: {e}", finish_reason="error")
 

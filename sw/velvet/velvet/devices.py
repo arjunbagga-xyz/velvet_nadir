@@ -149,6 +149,9 @@ class HardwareSpecs:
     obd2: bool = False          # Vehicle OBD-II
     motor_count: int = 0        # Robot motors
     custom: dict = field(default_factory=dict)
+    nl_description: str = ""
+    nl_safety_limits: str = ""
+    nl_capabilities: str = ""
     
     def to_dict(self) -> dict:
         return {
@@ -166,6 +169,9 @@ class HardwareSpecs:
             "obd2": self.obd2,
             "motor_count": self.motor_count,
             "custom": self.custom,
+            "nl_description": self.nl_description,
+            "nl_safety_limits": self.nl_safety_limits,
+            "nl_capabilities": self.nl_capabilities,
         }
     
     @classmethod
@@ -204,6 +210,10 @@ class DeviceScript:
     action: str                  # "unlock_doors", "start_cleaning"
     script: str                  # Python/shell code
     description: str = ""
+    nl_description: str = ""
+    nl_prerequisites: str = ""
+    nl_expected_outcome: str = ""
+    nl_failure_modes: str = ""
     verified: bool = False
     is_sandboxed: bool = False   # Whether this script has passed sandbox validation
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -293,6 +303,27 @@ class DeviceScript:
             return {"success": True, "result": result}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def to_dict(self) -> dict:
+        return {
+            "action": self.action,
+            "script": self.script,
+            "description": self.description,
+            "nl_description": self.nl_description,
+            "nl_prerequisites": self.nl_prerequisites,
+            "nl_expected_outcome": self.nl_expected_outcome,
+            "nl_failure_modes": self.nl_failure_modes,
+            "verified": self.verified,
+            "is_sandboxed": self.is_sandboxed,
+            "created_at": self.created_at.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DeviceScript":
+        fields = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        if "created_at" in fields and isinstance(fields["created_at"], str):
+            fields["created_at"] = datetime.fromisoformat(fields["created_at"])
+        return cls(**fields)
 
 
 @dataclass
@@ -657,9 +688,26 @@ async def create_registry_with_fabric() -> HardwareRegistry:
     
     # Subscribe to device topics
     await fabric.subscribe(MessageType.MESH_DEVICE_ANNOUNCE.value, on_device_announce)
-    await fabric.subscribe(MessageType.MESH_DEVICE_HEARTBEAT.value, on_heartbeat)
-    await fabric.subscribe(MessageType.MESH_DEVICE_LEAVE.value, on_device_leave)
-    
+    async def on_basilisk_capture(query):
+        """Handle Basilisk capture requests on local device."""
+        try:
+            from velvet.config import get_config
+            import json
+            cfg = get_config()
+            payload = {
+                "device_id": cfg.device_id,
+                "biometric_frame": "frame_sample_bytes",
+                "mode": "both",
+                "status": "ok"
+            }
+            query.reply(query.key_expr, json.dumps(payload).encode("utf-8"))
+        except Exception as err:
+            logger.error(f"[Devices] Basilisk capture reply error: {err}")
+
+    from velvet.config import get_config
+    dev_id = get_config().device_id
+    fabric.register_query_handler(f"mesh/device/{dev_id}/capture_basilisk", on_basilisk_capture)
+
     await registry.start()
     return registry
 

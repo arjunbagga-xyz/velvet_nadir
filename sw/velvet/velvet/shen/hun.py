@@ -37,13 +37,22 @@ class Hun:
         registry = get_skill_registry()
         tools = registry.list_all()
         
+        # 1b. Retrieve external MCP tools from LimenGateway
+        from velvet.limen import get_limen_gateway
+        limen = get_limen_gateway()
+        mcp_tools = limen.mcp_tool_schemas
+        
         # 2. Format tool descriptions for the prompt
         tool_desc = ""
-        if tools:
+        if tools or mcp_tools:
             tool_desc = "\nAvailable Tools:\n"
             for t in tools:
                 params = ", ".join([f"{p.name} ({p.param_type})" for p in t.parameters])
                 tool_desc += f"- {t.name}: {t.description}. Params: [{params}]\n"
+            for t_name, t_info in mcp_tools.items():
+                schema = t_info.get("schema", {}).get("function", {})
+                desc = schema.get("description", "")
+                tool_desc += f"- {t_name}: {desc}. Params: {schema.get('parameters', {})}\n"
                 
             tool_desc += (
                 "\nTo use a tool, respond with a JSON block like this:\n"
@@ -59,10 +68,30 @@ class Hun:
             f"Use the tools provided if necessary to fulfill the task. {tool_desc}\n"
             f"CTX: {context}"
         )
-        
         messages = [{"role": "user", "content": task}]
         
-        return await self._llm_inference(system_context, messages, None)
+        import time
+        start_t = time.time()
+        res = await self._llm_inference(system_context, messages, None)
+        latency_ms = (time.time() - start_t) * 1000.0
+
+        try:
+            from velvet.shen.affinity import ModelAffinityTracker
+            tracker = ModelAffinityTracker()
+            model_name = getattr(self.config.llm, "model", "default_model")
+            device_id = getattr(self.config, "device_id", "local")
+            quality = 0.9 if res and not res.startswith("[Hun]") else 0.2
+            await tracker.record_task_result(
+                model=model_name,
+                task_type="reasoning",
+                quality=quality,
+                latency_ms=latency_ms,
+                device_id=device_id
+            )
+        except Exception as err:
+            logger.debug(f"[Hun] Failed to record affinity result: {err}")
+
+        return res
 
     async def imagine(self, prompt: str) -> str:
         """

@@ -16,6 +16,7 @@ __all__ = [
     "LlamaCppAdapter",
     "VLLMAdapter",
     "MeshLLMAdapter",
+    "NodeCooldown",
     "create_llm_adapter",
     "get_llm_adapter",
     "VELVET_SYSTEM_PROMPT",
@@ -23,12 +24,45 @@ __all__ = [
 
 import asyncio
 import json
+import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 from loguru import logger
 
 from velvet.errors import LLMAdapterError
+from velvet.reliability import (
+    repair_truncated_tool_call,
+    coerce_tool_arguments,
+    check_empty_response,
+    strip_think_blocks,
+    EmptyResponseError,
+)
+
+
+@dataclass
+class NodeCooldown:
+    """Tracks failure counts and exponential backoff for a mesh node."""
+    device_id: str
+    failure_count: int = 0
+    until: float = 0.0
+    last_error: str = ""
+
+    def is_active(self) -> bool:
+        return time.time() < self.until
+
+    def backoff(self, error: str = "") -> None:
+        backoffs = [60.0, 120.0, 300.0, 900.0, 3600.0]
+        idx = min(self.failure_count, len(backoffs) - 1)
+        delay = backoffs[idx]
+        self.failure_count += 1
+        self.until = time.time() + delay
+        self.last_error = error
+
+    def reset(self) -> None:
+        self.failure_count = 0
+        self.until = 0.0
+        self.last_error = ""
 
 
 @dataclass
@@ -140,18 +174,39 @@ class OllamaAdapter(LLMAdapter):
                 message = data.get("message", {})
                 
                 # Check for tool calls
-                tool_calls = message.get("tool_calls")
+                raw_tool_calls = message.get("tool_calls")
+                tool_calls = None
+                if raw_tool_calls:
+                    tool_calls = []
+                    for tc in raw_tool_calls:
+                        func = tc.get("function", {})
+                        args = func.get("arguments", {})
+                        if isinstance(args, str):
+                            args = repair_truncated_tool_call(args)
+                        func["arguments"] = args
+                        tool_calls.append(tc)
+                
+                raw_content = message.get("content", "") or ""
+                clean_content = strip_think_blocks(raw_content)
+
+                if check_empty_response(clean_content, tool_calls):
+                    return LLMResponse(
+                        text="Error: Empty response from model",
+                        finish_reason="error",
+                    )
                 
                 return LLMResponse(
-                    text=message.get("content", ""),
+                    text=clean_content,
                     tool_calls=tool_calls,
                     finish_reason="tool_calls" if tool_calls else "stop",
                     tokens_used=data.get("eval_count", 0),
                 )
                 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"Ollama connection failed: {e}")
-            return LLMResponse(text=f"Error connecting to LLM: {e}")
+            return LLMResponse(text=f"Error connecting to LLM: {e}", finish_reason="error")
             
     async def stream(
         self,
@@ -188,6 +243,8 @@ class OllamaAdapter(LLMAdapter):
                     except:
                         pass
                             
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"Ollama stream failed: {e}")
             yield f"Error: {e}"
@@ -215,6 +272,7 @@ class MeshLLMAdapter(LLMAdapter):
         # Optional: Direct reference to local service if running in same process
         self.local_service = service_provider 
         self._affinity_tracker = affinity_tracker
+        self._node_cooldowns: dict[str, NodeCooldown] = {}
         
     @property
     def affinity_tracker(self):
@@ -243,26 +301,103 @@ class MeshLLMAdapter(LLMAdapter):
         elif any("code" in m.get("content", "").lower() for m in messages if m.get("role") == "system"):
             task_type = "code_gen"
 
-        # 2. Discovery & Selection
-        best_node = self._select_best_node(task_type)
-        
+        # 2. Retry loop with node cooldowns
+        max_retries = 3
+        attempted_nodes: set[str] = set()
+        last_error = "No capable LLM nodes found on the mesh."
+
+        for attempt in range(max_retries):
+            best_node = self._select_best_node(task_type, exclude_device_ids=attempted_nodes)
+            if not best_node:
+                break
+            attempted_nodes.add(best_node.device_id)
+
+            try:
+                if best_node.device_id == self.local_id and self.local_service:
+                    logger.info(f"[MeshLLM] Routing locally (Fast Path, attempt {attempt + 1})")
+                    resp = await self.local_service.backend.generate(
+                        messages, tools=tools, max_tokens=max_tokens, temperature=temperature, images=images
+                    )
+                else:
+                    logger.info(
+                        f"[MeshLLM] Routing to remote node: {best_node.device_id} "
+                        f"(Tasks: {best_node.load.active_tasks}, attempt {attempt + 1})"
+                    )
+                    resp = await self._remote_request(best_node.device_id, messages, tools, images)
+
+                if resp.finish_reason == "error" or (resp.text and resp.text.startswith("Error:")):
+                    err_msg = resp.text
+                    if best_node.device_id not in self._node_cooldowns:
+                        self._node_cooldowns[best_node.device_id] = NodeCooldown(best_node.device_id)
+                    self._node_cooldowns[best_node.device_id].backoff(err_msg)
+                    last_error = err_msg
+                    continue
+
+                # Successful execution resets cooldown
+                if best_node.device_id in self._node_cooldowns:
+                    self._node_cooldowns[best_node.device_id].reset()
+                return resp
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"[MeshLLM] Execution failed on {best_node.device_id}: {e}")
+                try:
+                    from velvet.reliability.error_classifier import ErrorClassifier
+                    classified = ErrorClassifier.classify(e)
+                    last_error = f"[{classified.category.value}] {classified.user_message}: {e}"
+                except Exception:
+                    last_error = str(e)
+
+                if best_node.device_id not in self._node_cooldowns:
+                    self._node_cooldowns[best_node.device_id] = NodeCooldown(best_node.device_id)
+                self._node_cooldowns[best_node.device_id].backoff(str(e))
+                continue
+
+        return LLMResponse(
+            text=f"Error: All {len(attempted_nodes)} mesh LLM attempts failed. Last error: {last_error}",
+            finish_reason="error",
+        )
+
+    async def generate_judge(
+        self,
+        messages: list[dict],
+        criteria: str,
+        exclude_device_id: str | None = None,
+        exclude_model: str | None = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.2,
+    ) -> LLMResponse:
+        """
+        Route evaluation to an independent node/model on the mesh.
+        Strictly avoids self-grading by excluding the generator's device and/or model.
+        """
+        judge_messages = [
+            {"role": "system", "content": f"You are an impartial evaluator. Judge against criteria: {criteria}"},
+            *messages,
+        ]
+        best_node = self._select_best_node(
+            task_type="judge",
+            exclude_device_id=exclude_device_id,
+            exclude_model=exclude_model,
+        )
         if not best_node:
-            return LLMResponse("Error: No capable LLM nodes found on the mesh.")
-            
-        # 3. Routing
-        if best_node.device_id == self.local_id and self.local_service:
-            # Local Fast Path (Function Call)
-            logger.info("[MeshLLM] Routing locally (Fast Path)")
-            # We need to adapt the call to the backend interface. 
-            # The local_service wraps the backend.
-            return await self.local_service.backend.generate(
-                messages, tools=tools, max_tokens=max_tokens, temperature=temperature, images=images
-            )
-            
-        else:
-            # Remote Slow Path (Network)
-            logger.info(f"[MeshLLM] Routing to remote node: {best_node.device_id} (Tasks: {best_node.load.active_tasks})")
-            return await self._remote_request(best_node.device_id, messages, tools, images)
+            # Fallback to any node
+            best_node = self._select_best_node(task_type="judge")
+        if not best_node:
+            return LLMResponse("Error: No capable judge node found on mesh.", finish_reason="error")
+
+        try:
+            if best_node.device_id == self.local_id and self.local_service:
+                return await self.local_service.backend.generate(
+                    judge_messages, max_tokens=max_tokens, temperature=temperature
+                )
+            else:
+                return await self._remote_request(best_node.device_id, judge_messages, tools=None, images=None)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            return LLMResponse(f"Error: Judge evaluation failed: {e}", finish_reason="error")
 
     async def stream(
         self,
@@ -283,16 +418,17 @@ class MeshLLMAdapter(LLMAdapter):
             logger.error(f"[MeshLLM] Stream error: {response.text}")
 
 
-    def _select_best_node(self, task_type: str = "chat"):
-        """Find the best node based on Load, Locality, and Model Affinity."""
+    def _select_best_node(
+        self,
+        task_type: str = "chat",
+        exclude_device_id: str | None = None,
+        exclude_model: str | None = None,
+        exclude_device_ids: set[str] | None = None,
+    ):
+        """Find the best node based on Load, Locality, Model Affinity, and Cooldowns."""
         from velvet.devices import get_registry
         try:
             registry = get_registry()
-            # In a real impl, we'd filter by capability="llm". 
-            # For MVP, we assume any Compute Node or any node with 'llm' cap is valid.
-            # OR just any node that we know has the service. 
-            # Let's assume all nodes *could* have it, or we rely on explicit cap?
-            # Let's iterate all online devices.
             candidates = registry.get_online_devices()
             logger.info(f"[MeshLLM] Found {len(candidates)} online devices: {[d.device_id for d in candidates]}")
             
@@ -306,18 +442,23 @@ class MeshLLMAdapter(LLMAdapter):
             scored = []
             for d in candidates:
                 logger.info(f"[MeshLLM] Checking candidate {d.device_id} - status: {d.status}, type: {d.device_type}")
-                # Filter: Must be capable (or imply it is for MVP flexibility)
-                # For now, let's assume if it's a Host/Compute type, it's a candidate.
-                # Real logic: if "llm" in d.capabilities
                 
+                # Check exclusions
+                if exclude_device_id and d.device_id == exclude_device_id:
+                    continue
+                if exclude_device_ids and d.device_id in exclude_device_ids:
+                    continue
+                if exclude_model and hasattr(d, 'loaded_models') and d.loaded_models:
+                    if any(exclude_model in m for m in d.loaded_models):
+                        continue
+
                 score = 50 # Base score for remote
                 
                 # Locality Bonus
                 if d.device_id == self.local_id:
                     score = 100
                 
-                # Load Penalty
-                # -10 per active task
+                # Load Penalty (-10 per active task)
                 score -= (d.load.active_tasks * 10)
                 
                 # Model Affinity Bonus
@@ -326,8 +467,10 @@ class MeshLLMAdapter(LLMAdapter):
                         logger.info(f"[MeshLLM] Node {d.device_id} gets affinity bonus for model {best_model}")
                         score += 30
                 
-                # VRAM Penalty (Blocking if full, simple linear for now)
-                # score += d.load.vram_free_gb * 2 
+                # Active Cooldown Penalty
+                cd = self._node_cooldowns.get(d.device_id)
+                if cd and cd.is_active():
+                    score -= 1000
                 
                 scored.append((score, d))
             
@@ -374,7 +517,7 @@ class MeshLLMAdapter(LLMAdapter):
             data = await asyncio.wait_for(future, timeout=30.0)
             
             if "error" in data:
-                 return LLMResponse(f"Remote Error: {data['error']}")
+                 return LLMResponse(f"Remote Error: {data['error']}", finish_reason="error")
                  
             return LLMResponse(
                 text=data.get("text", ""),
@@ -382,10 +525,12 @@ class MeshLLMAdapter(LLMAdapter):
                 tokens_used=data.get("tokens_used", 0)
             )
             
+        except asyncio.CancelledError:
+            raise
         except asyncio.TimeoutError:
-            return LLMResponse("Error: Remote LLM timed out.")
+            return LLMResponse("Error: Remote LLM timed out.", finish_reason="error")
         except Exception as e:
-            return LLMResponse(f"Error: {e}")
+            return LLMResponse(f"Error: {e}", finish_reason="error")
         finally:
             # Clean up subscription via unsubscribe (not sub.undeclare)
             await self.fabric.unsubscribe(reply_topic, on_response)
@@ -470,6 +615,8 @@ class LlamaCppAdapter(LLMAdapter):
                 tokens_used=response.get("usage", {}).get("total_tokens", 0),
             )
             
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"llama.cpp generation failed: {e}")
             return LLMResponse(text=f"Error: {e}", finish_reason="error")
@@ -504,6 +651,8 @@ class LlamaCppAdapter(LLMAdapter):
                 if "content" in delta:
                     yield delta["content"]
                     
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"llama.cpp stream failed: {e}")
             yield f"Error: {e}"
@@ -543,18 +692,19 @@ Only use JSON format if you want to call a function. Otherwise respond normally.
         return messages
         
     def _extract_tool_calls(self, content: str) -> list[dict] | None:
-        """Try to extract tool calls from the response."""
+        """Try to extract tool calls from the response, with automatic truncated JSON repair."""
         try:
             # Look for JSON in the response
             import re
             json_match = re.search(r'\{[^{}]*"function"[^{}]*\}', content)
             if json_match:
-                call = json.loads(json_match.group())
-                if "function" in call:
+                call = repair_truncated_tool_call(json_match.group())
+                if isinstance(call, dict) and "function" in call:
+                    args = call.get("arguments", {})
                     return [{
                         "function": {
                             "name": call["function"],
-                            "arguments": json.dumps(call.get("arguments", {})),
+                            "arguments": json.dumps(args) if isinstance(args, dict) else str(args),
                         }
                     }]
         except Exception:
@@ -629,31 +779,44 @@ class VLLMAdapter(LLMAdapter):
                 message = choice["message"]
 
                 # Handle native tool calls from vLLM
-                tool_calls = message.get("tool_calls")
-                if tool_calls:
-                    # Normalize to our format
+                raw_tool_calls = message.get("tool_calls")
+                tool_calls = None
+                if raw_tool_calls:
+                    # Normalize to our format with repair
                     normalized = []
-                    for tc in tool_calls:
+                    for tc in raw_tool_calls:
                         func = tc.get("function", {})
-                        args = func.get("arguments", "{}")
-                        if isinstance(args, str):
-                            try:
-                                args = json.loads(args)
-                            except json.JSONDecodeError:
-                                args = {}
+                        raw_args = func.get("arguments", "{}")
+                        if isinstance(raw_args, str):
+                            args = repair_truncated_tool_call(raw_args)
+                        elif isinstance(raw_args, dict):
+                            args = raw_args
+                        else:
+                            args = {}
                         normalized.append({
                             "tool": func.get("name", ""),
                             "params": args,
                         })
                     tool_calls = normalized
 
+                raw_content = message.get("content", "") or ""
+                clean_content = strip_think_blocks(raw_content)
+
+                if check_empty_response(clean_content, tool_calls):
+                    return LLMResponse(
+                        text="Error: Empty response from model",
+                        finish_reason="error",
+                    )
+
                 return LLMResponse(
-                    text=message.get("content", "") or "",
+                    text=clean_content,
                     tool_calls=tool_calls,
                     finish_reason="tool_calls" if tool_calls else choice.get("finish_reason", "stop"),
                     tokens_used=data.get("usage", {}).get("total_tokens", 0),
                 )
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"vLLM request failed: {e}")
             return LLMResponse(text=f"Error: {e}", finish_reason="error")
@@ -696,6 +859,8 @@ class VLLMAdapter(LLMAdapter):
                     except (json.JSONDecodeError, KeyError, IndexError):
                         pass
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"vLLM stream failed: {e}")
             yield f"Error: {e}"
@@ -736,6 +901,12 @@ def create_llm_adapter(
 
 
 _default_adapter: LLMAdapter | None = None
+
+def set_default_adapter(adapter: LLMAdapter) -> None:
+    """Set the default LLM adapter singleton."""
+    global _default_adapter
+    _default_adapter = adapter
+
 
 def get_llm_adapter() -> LLMAdapter:
     """Get or create the default LLM adapter (singleton)."""

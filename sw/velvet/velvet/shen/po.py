@@ -98,40 +98,41 @@ class VisionMonitor:
                     import base64
                     img_b64 = base64.b64encode(buffer).decode('utf-8')
                     
-                    if hasattr(self, '_loop') and self._loop:
-                        asyncio.run_coroutine_threadsafe(
-                            fabric.publish(
-                                MessageType.VISION_EVENT.value,
-                                {
-                                    "event": "motion_detected", 
-                                    "score": float(motion_score),
-                                    "image": img_b64
-                                }
-                            ),
-                            self._loop
-                        )
+                    if hasattr(self, '_loop') and self._loop and not getattr(self, '_processing_frame', False):
+                        self._processing_frame = True
                         
-                        # Phase 2: People Recognition
-                        if self._xiang is not None:
-                            # Run face detection in asyncio loop
-                            async def _detect_faces():
-                                # identify_faces expects RGB frame
-                                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                                people = await self._xiang.identify_faces(frame_rgb)
-                                for p in people:
-                                    if p.name != "unknown":
-                                        logger.info(f"[Po] Recognized {p.name} with confidence {p.confidence:.2f}")
-                                        await fabric.publish(MessageType.PERSON_IDENTIFIED.value, {
-                                            "name": p.name,
-                                            "confidence": float(p.confidence)
-                                        })
-                                    else:
-                                        logger.info("[Po] Undetected person found")
-                                        await fabric.publish(MessageType.PERSON_DETECTED.value, {
-                                            "confidence": float(p.confidence)
-                                        })
-                            
-                            asyncio.run_coroutine_threadsafe(_detect_faces(), self._loop)
+                        async def _process_and_publish():
+                            try:
+                                await fabric.publish(
+                                    MessageType.VISION_EVENT.value,
+                                    {
+                                        "event": "motion_detected", 
+                                        "score": float(motion_score),
+                                        "image": img_b64
+                                    }
+                                )
+                                # Phase 2: People Recognition
+                                if self._xiang is not None:
+                                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                                    people = await self._xiang.identify_faces(frame_rgb)
+                                    for p in people:
+                                        if p.name != "unknown":
+                                            logger.info(f"[Po] Recognized {p.name} with confidence {p.confidence:.2f}")
+                                            await fabric.publish(MessageType.PERSON_IDENTIFIED.value, {
+                                                "name": p.name,
+                                                "confidence": float(p.confidence)
+                                            })
+                                        else:
+                                            logger.info("[Po] Undetected person found")
+                                            await fabric.publish(MessageType.PERSON_DETECTED.value, {
+                                                "confidence": float(p.confidence)
+                                            })
+                            except Exception as e:
+                                logger.error(f"[Po] Vision processing error: {e}")
+                            finally:
+                                self._processing_frame = False
+                                
+                        asyncio.run_coroutine_threadsafe(_process_and_publish(), self._loop)
 
             self._last_frame = gray
             time.sleep(1.0 / get_config().vision.fps)

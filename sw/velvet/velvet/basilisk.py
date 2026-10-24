@@ -62,9 +62,10 @@ class BasiliskEnclave:
         logger.debug(f"[Basilisk] '{self.name}' enclave collapsed after {duration:.3f}s. Cleared {count} references.")
 
 
-def sanitize_for_hun(data: Any) -> Any:
+def sanitize_for_hun(data: Any, proxy=None) -> Any:
     """
-    Recursively strips raw tensors and large binary blobs from a payload.
+    Recursively strips raw tensors and large binary blobs from a payload,
+    and scrambles secrets using MirageProxy if provided.
     Returns a 'safe' version for storage in logs or LLM WorkingMemory.
     """
     if isinstance(data, dict):
@@ -72,11 +73,24 @@ def sanitize_for_hun(data: Any) -> Any:
         for k, v in data.items():
             if _is_raw_tensor(k, v):
                 safe_dict[k] = f"<BASILISK_STRIPPED:{type(v).__name__}>"
+            elif isinstance(v, str) and proxy:
+                # Scramble strings to prevent secret leakage
+                scrambled, _ = proxy.scramble(v)
+                safe_dict[k] = scrambled
+            elif isinstance(v, str) and not proxy:
+                # Basic string checking without proxy just in case
+                if any(x in k.lower() for x in ["secret", "password", "key", "token"]):
+                    safe_dict[k] = "<MIRAGE_SCRUBBED>"
+                else:
+                    safe_dict[k] = v
             else:
-                safe_dict[k] = sanitize_for_hun(v)
+                safe_dict[k] = sanitize_for_hun(v, proxy)
         return safe_dict
     elif isinstance(data, list):
-        return [sanitize_for_hun(item) for item in data]
+        return [sanitize_for_hun(item, proxy) for item in data]
+    elif isinstance(data, str) and proxy:
+        scrambled, _ = proxy.scramble(data)
+        return scrambled
     return data
 
 

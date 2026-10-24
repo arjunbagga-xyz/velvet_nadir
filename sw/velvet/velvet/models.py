@@ -147,6 +147,85 @@ class ModelRegistry:
         self._device_models: dict[str, list[str]] = {}
         # All known model infos
         self._model_infos: dict[str, ModelInfo] = {}
+        # Local benchmarks cache
+        self.benchmarks: dict[str, dict[str, float]] = {}
+        self._load_local_benchmarks()
+
+    def _load_local_benchmarks(self) -> None:
+        """Load benchmarks from local JSON cache."""
+        import json
+        from pathlib import Path
+        path = Path(__file__).parent / "model_benchmarks.json"
+        if path.exists():
+            try:
+                with open(path, "r") as f:
+                    self.benchmarks = json.load(f)
+            except Exception as e:
+                logger.error(f"[ModelRegistry] Failed to load local benchmarks: {e}")
+        if not self.benchmarks:
+            self.benchmarks = {"text": {}, "code": {}}
+
+    async def fetch_online_benchmarks(self) -> None:
+        """Fetch latest Elo leaderboard snapshots from api.wulong.dev."""
+        import aiohttp
+        import json
+        from pathlib import Path
+        
+        categories = ["text", "code"]
+        updated = False
+        
+        async with aiohttp.ClientSession() as session:
+            for cat in categories:
+                url = f"https://api.wulong.dev/arena-ai-leaderboards/v1/leaderboard?name={cat}"
+                try:
+                    async with session.get(url, timeout=5.0) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            new_scores = {}
+                            models_list = []
+                            if isinstance(data, list):
+                                models_list = data
+                            elif isinstance(data, dict):
+                                models_list = data.get("models", data.get("data", []))
+                                
+                            for entry in models_list:
+                                m_name = entry.get("model") or entry.get("name")
+                                elo = entry.get("rating") or entry.get("elo") or entry.get("score")
+                                if m_name and elo is not None:
+                                    new_scores[m_name.lower().strip()] = float(elo)
+                                    
+                            if new_scores:
+                                self.benchmarks[cat] = new_scores
+                                updated = True
+                                logger.info(f"[ModelRegistry] Successfully crawled chatbot arena '{cat}' leaderboard from wulong.dev ({len(new_scores)} models)")
+                except Exception as e:
+                    logger.debug(f"[ModelRegistry] Failed to fetch online benchmarks for category '{cat}': {e}")
+                    
+        if updated:
+            path = Path(__file__).parent / "model_benchmarks.json"
+            try:
+                with open(path, "w") as f:
+                    json.dump(self.benchmarks, f, indent=2)
+            except Exception as e:
+                logger.error(f"[ModelRegistry] Failed to cache benchmarks to file: {e}")
+
+    def get_model_elo(self, model_id: str, task_type: str = "text") -> float:
+        """
+        Get ELO rating for a model.
+        Uses fuzzy/substring matching to map model IDs to benchmark keys.
+        """
+        cat = "code" if task_type == "code" else "text"
+        scores = self.benchmarks.get(cat, {})
+        
+        mid_lower = model_id.lower()
+        if mid_lower in scores:
+            return scores[mid_lower]
+            
+        for key, val in scores.items():
+            if key in mid_lower or mid_lower in key:
+                return val
+                
+        return 1000.0
         
     async def register_model(self, device_id: str, model: ModelInfo) -> None:
         """Register a model as available on a device."""
@@ -271,12 +350,18 @@ class ModelRegistry:
                     if not all(cap in info.capabilities for cap in capabilities):
                         continue
                 
+                # Determine task type from capabilities
+                task_type = "text"
+                if capabilities and "code" in capabilities:
+                    task_type = "code"
+                
                 # Add all available instances
                 for loaded in loaded_list:
                     if loaded.available:
                         device = registry.get_device(loaded.device_id)
                         if device and device.is_online():
-                            score = 1.0 - loaded.utilization
+                            elo = self.get_model_elo(mid, task_type)
+                            score = (1.0 - loaded.utilization) * (elo / 1000.0)
                             candidates.append((loaded.device_id, mid, score))
         
         if not candidates:
@@ -469,3 +554,18 @@ async def init_model_registry(with_fabric: bool = True) -> tuple[ModelRegistry, 
         _model_registry = ModelRegistry()
         _inference_router = InferenceRouter(_model_registry)
     return _model_registry, _inference_router
+
+
+async def announce_model_capabilities(device_id: str, model_info: ModelInfo) -> None:
+    """Announce local model capabilities to the Zenoh mesh."""
+    from .fabric import get_fabric
+    try:
+        fabric = get_fabric()
+        payload = {
+            "device_id": device_id,
+            "model": model_info.to_dict()
+        }
+        await fabric.publish("velvet/mesh/model/announce", payload)
+        logger.info(f"[Models] Published model capability announcement for {model_info.model_id}")
+    except Exception as e:
+        logger.error(f"[Models] Failed to publish model capability announcement: {e}")

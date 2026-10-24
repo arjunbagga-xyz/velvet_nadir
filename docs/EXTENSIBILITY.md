@@ -1,3 +1,21 @@
+# Current Extensibility Model (Project Shen Architecture)
+
+The extensibility model for Velvet Nadir includes:
+- **`@skill` Decorator & SkillRegistry**: Dynamic skill registration with Compare-And-Swap (`CAS`) slot validation, version tracking (`_previous`), and telemetry scorecards (`SkillScorecard`). Auto-promotes upgraded skills after 10 successful runs (>90% success) and auto-rolls back on high failure rates (>=5 runs, >=50% failures).
+- **AST Skill Discovery & Hot-Loading**: Zero-import static AST scanner parses `@skill` metadata from `.py` files without executing untrusted code, enabling instant hot-reloading with mtime caching.
+- **MeshSkillSync**: Distributed skill discovery and gossip protocol over Zenoh topics `velvet/mesh/skills/announce` and `velvet/mesh/skills/discover`.
+- **MarkdownSkill**: Declarative prompt-based skills authored in GitHub-flavored Markdown.
+- **Saraswati Autonomous Skill Learning**: 3-stage autonomous pipeline (Shruti observation -> Smriti codification -> Vidya AST validation) that invents and deploys new skills at runtime.
+- **LimenGateway & MCP Integration**: Full Model Context Protocol (MCP) tool exposure and multi-modal platform bridges.
+- **Semantic Tool Disclosure**: Dynamic token-efficient context injection pre-selecting top relevant tools based on user intent.
+
+
+---
+
+> **HISTORICAL CONTENT BELOW** — The following was the original document from an earlier phase of the project.
+
+---
+
 # 🔌 Extensibility Architecture
 
 > How Velvet Nadir grows and adapts with new capabilities

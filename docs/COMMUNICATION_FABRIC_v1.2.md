@@ -6,6 +6,11 @@
 
 ## 📋 Revision Notes
 
+**v1.3 Changes (2026-07-07):**
+- Added **Inference Fallback/Upgrade broadcasts** over Zenoh model announcement topic
+- Integrated **real-time conflict resolution propagation**
+- Enabled **remote MCP/A2A dynamic tool capability announcements**
+
 **v1.2 Changes (2026-02-03):**
 - Dropped hybrid MQTT+gRPC recommendation for single unified fabric
 - Simplified to Zenoh-primary architecture
@@ -596,4 +601,31 @@ python ws_bridge.py --port 8080
 
 ---
 
-*v1.2 simplifies the architecture significantly. One protocol (Zenoh), one daemon per node, reflexes for speed.*
+## 📡 v1.3 Specialized Zenoh Topics & Mesh Routing
+
+Velvet Nadir v1.3 leverages the Zenoh fabric for dynamic capability adjustments and real-time state synchronization across mesh nodes.
+
+### 1. Active Capability & Fallback Announcements
+- **Topic**: `velvet/mesh/model/announce`
+- **Direction**: Publish/Subscribe
+- **Description**: Triggered immediately when a device's inference backend transitions.
+  - *Fallback Downgrade*: Triggered if a device runs out of API keys and falls back to a local model (Ollama/llama.cpp), pruning its context size.
+  - *Recovery Upgrade*: Triggered when rate limits clear and cloud model capabilities are restored.
+  - Other nodes listen to this topic to dynamically keep their local `ModelRegistry` up-to-date, allowing the `InferenceRouter` to select and route requests to the best performing available models.
+
+### 2. Instant Conflict Resolution Broadcasts
+- **Topic**: `velvet/reconnection/resolved`
+- **Direction**: Publish/Subscribe
+- **Description**: Published immediately when `OccamsRazorTask` reconciles logical memory database contradictions. 
+  - Peer nodes subscribe to this topic and execute `resolve_conflict(sutra_id, payload)` locally in real-time, instantly aligning database states and deleting superseded concurrent conflict records.
+
+### 3. Dynamic MCP Tool Scaffolding Announcements
+- **Topic**: `velvet/mesh/mcp/announce`
+- **Direction**: Publish/Subscribe
+- **Description**: Triggered upon completion of dynamic MCP tool capability discovery.
+  - Announcing nodes broadcast the name of the MCP server and the list of imported tool schemas.
+  - Peer nodes register these tools to allow distributed RPC calls across the fabric.
+
+---
+
+*v1.3 enhances the Zenoh fabric from static network transport to a reactive capability mesh (real-time fallbacks, resolution syncs, and tool discovery).*

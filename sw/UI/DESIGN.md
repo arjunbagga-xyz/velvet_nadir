@@ -32,8 +32,8 @@ Angular shape: `clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(10
 ## States
 `.active` `.current` `.past` `.alert` `.selected` `.on` `.highlight` `.flipped` `.paused` `.dismissed` `.expanded`
 
-## Widget
-```html
-<div class="widget" data-name="Title">content</div>
-<div class="widget wide" data-name="Wide">content</div>
-```
+## Dynamic Widget & Modality Levels
+- **`ZERO_UI`**: Ambient voice mode (UI_Score < 2).
+- **`MICRO_UI`**: HUD overlay / toast notification (2 <= UI_Score < 4).
+- **`WIDGET_UI`**: Direct manipulation widget - Media scrubber, 3D model spinner, File Explorer (4 <= UI_Score < 7).
+- **`MACRO_UI`**: Full workspace canvas takeover (UI_Score >= 7).

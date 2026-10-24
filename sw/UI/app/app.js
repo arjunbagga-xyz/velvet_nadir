@@ -1,6 +1,6 @@
 // ── App.js — Main Application Logic ────────────────────────
 import {
-  state, connectBridge, subscribe, createWorkspace, deleteWorkspace, searchJing, isConnected
+  state, connectBridge, subscribe, createWorkspace, deleteWorkspace, searchJing, isConnected, triggerWidgetAction, saveDeviceFile
 } from './ws-bridge.js';
 import {
   renderSilkPulseConnection, renderSilkPulseRadial, renderDormantSineConnection,
@@ -9,6 +9,10 @@ import {
 } from './canvas-animations.js';
 import { openEntityPopup, openDevicePopup } from './entity-popups.js';
 import { spawnPopup, closePopup, hasPopup, bringToFront } from './window-manager.js';
+import { initNotifications, showToast, showSkillApproval } from './notifications.js';
+
+// Initialize Notifications
+initNotifications();
 
 // ── SVG Icon Templates ─────────────────────────────────────
 const ICONS = {
@@ -65,6 +69,122 @@ subscribe('contexts', (newData) => {
 subscribe('events', (newData) => {
   events = newData;
   if (currentView === 'logs') renderLogs();
+});
+
+subscribe('notification', (notifData) => {
+  console.log('[UI] Received notification:', notifData);
+  if (notifData.type === 'skill_approval') {
+    showSkillApproval(notifData.skillData, () => {
+      // Logic for approving skill via backend if needed
+      console.log('Skill approved:', notifData.skillData.name);
+      import('./ws-bridge.js').then(bridge => {
+         bridge.triggerWidgetAction('skill_approval', 'approve', { skill: notifData.skillData.name });
+      });
+    }, () => {
+      console.log('Skill rejected:', notifData.skillData.name);
+      import('./ws-bridge.js').then(bridge => {
+         bridge.triggerWidgetAction('skill_approval', 'reject', { skill: notifData.skillData.name });
+      });
+    });
+  } else {
+    // Standard toast
+    const type = notifData.level || 'info'; // info, success, warning, danger
+    const icon = notifData.icon || 'ℹ';
+    const title = notifData.title || 'Notification';
+    const text = notifData.message || '';
+    showToast(type, icon, title, text);
+  }
+});
+
+subscribe('ui.widget.render', (widgetData) => {
+  console.log('[UI] Received ui.widget.render:', widgetData);
+  const widgetId = widgetData.id || `widget-${Date.now()}`;
+  const title = widgetData.title || 'Dynamic Direct Manipulation UI';
+  const type = widgetData.widget_type || 'generic'; // media | model3d | editor | micro_hud
+
+  let bodyHTML = '';
+  if (type === 'media') {
+     bodyHTML = `
+        <div class="media-widget-container" style="display:flex;flex-direction:column;gap:12px;padding:8px;">
+           <div style="font-weight:600;font-size:14px;">${widgetData.track_name || 'Audio Stream'}</div>
+           <div style="font-size:12px;color:var(--text-muted);">${widgetData.artist || 'Velvet Nadir Media'}</div>
+           <input type="range" id="scrubber-${widgetId}" min="0" max="100" value="${widgetData.progress || 0}" style="width:100%;">
+           <div style="display:flex;justify-content:center;gap:16px;">
+              <button id="btn-rewind-${widgetId}" class="remote-ctrl-btn remote-ctrl-btn--neutral" style="flex:0;padding:6px 12px;">⏮ 10s</button>
+              <button id="btn-play-${widgetId}" class="remote-ctrl-btn remote-ctrl-btn--positive" style="flex:0;padding:6px 16px;">▶ Play</button>
+              <button id="btn-forward-${widgetId}" class="remote-ctrl-btn remote-ctrl-btn--neutral" style="flex:0;padding:6px 12px;">⏭ 10s</button>
+           </div>
+        </div>
+     `;
+  } else if (type === 'model3d') {
+     bodyHTML = `
+        <div class="model3d-widget-container" style="display:flex;flex-direction:column;gap:8px;align-items:center;">
+           <canvas id="canvas3d-${widgetId}" width="360" height="240" style="background:#090d16;border-radius:8px;border:1px solid var(--border);cursor:grab;"></canvas>
+           <div style="font-size:11px;color:var(--text-muted);">Click & Drag to spin model • Scroll to zoom</div>
+        </div>
+     `;
+  } else {
+     bodyHTML = `
+        <div class="generic-widget-container" style="padding:8px;">
+           <div style="font-size:13px;margin-bottom:8px;">${widgetData.description || 'Generated Interactive Component'}</div>
+           ${widgetData.custom_html || ''}
+        </div>
+     `;
+  }
+
+  const popup = spawnPopup({
+     id: widgetId,
+     title: title,
+     typeLabel: `GENERATIVE UI · ${type.toUpperCase()}`,
+     width: type === 'model3d' ? 400 : 380,
+     bodyHTML: bodyHTML
+  });
+
+  if (popup) {
+     if (type === 'media') {
+        const playBtn = popup.querySelector(`#btn-play-${widgetId}`);
+        if (playBtn) {
+           playBtn.addEventListener('click', () => {
+              const playing = playBtn.innerText.includes('Pause');
+              playBtn.innerText = playing ? '▶ Play' : '⏸ Pause';
+              triggerWidgetAction(widgetId, 'toggle_play', { playing: !playing });
+           });
+        }
+        const scrubber = popup.querySelector(`#scrubber-${widgetId}`);
+        if (scrubber) {
+           scrubber.addEventListener('change', () => {
+              triggerWidgetAction(widgetId, 'seek', { position: scrubber.value });
+           });
+        }
+     } else if (type === 'model3d') {
+        const cvs = popup.querySelector(`#canvas3d-${widgetId}`);
+        if (cvs) {
+           const ctx = cvs.getContext('2d');
+           let angleX = 0, angleY = 0;
+           let dragging = false, lastX = 0, lastY = 0;
+
+           function drawWireCube() {
+              ctx.clearRect(0, 0, cvs.width, cvs.height);
+              ctx.strokeStyle = '#00f0ff';
+              ctx.lineWidth = 2;
+              ctx.strokeRect(100 + Math.sin(angleY)*20, 60 + Math.sin(angleX)*20, 160, 120);
+           }
+           drawWireCube();
+
+           cvs.addEventListener('mousedown', (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+           window.addEventListener('mouseup', () => { dragging = false; });
+           cvs.addEventListener('mousemove', (e) => {
+              if (dragging) {
+                 angleY += (e.clientX - lastX) * 0.01;
+                 angleX += (e.clientY - lastY) * 0.01;
+                 lastX = e.clientX; lastY = e.clientY;
+                 drawWireCube();
+                 triggerWidgetAction(widgetId, 'spin_model', { angleX, angleY });
+              }
+           });
+        }
+     }
+  }
 });
 
 connectBridge();
@@ -580,9 +700,23 @@ if (jingSearchBtn && jingSearchInput) {
        searchJing(query);
     }
   });
-  jingSearchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') jingSearchBtn.click();
-  });
+}
+
+// Navbar Jing Search input
+const navJingSearch = $('jing-search');
+if (navJingSearch) {
+  const navInput = navJingSearch.querySelector('input');
+  if (navInput) {
+    navInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const query = navInput.value.trim();
+        if (query) {
+          console.log("Searching Jing from navbar:", query);
+          searchJing(query);
+        }
+      }
+    });
+  }
 }
 
 // Log Export to Local PC

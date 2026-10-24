@@ -3,7 +3,7 @@
 // Uses the window manager (spawnPopup) to create independent windows.
 
 import { spawnPopup } from './window-manager.js';
-import { updateAgent } from './ws-bridge.js';
+import { updateAgent, commandeerDevice, listDeviceFiles, saveDeviceFile, toggleDeviceStream, subscribe } from './ws-bridge.js';
 
 // ── SVG Icons (inline, small) ──────────────────────────────
 const IC = {
@@ -45,11 +45,11 @@ function tags(items, cls = 'tag tag--accent') {
   return `<div class="popup-tags">${items.map(t => `<span class="${cls}">${t}</span>`).join('')}</div>`;
 }
 
-function remoteControl(extraButtons = '') {
+function remoteControl(id, extraButtons = '') {
   return section('Remote Control', `
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="remote-ctrl-btn remote-ctrl-btn--positive" title="Commandeer">${IC.commandeer}<span>Commandeer</span></button>
-      <button class="remote-ctrl-btn remote-ctrl-btn--positive" title="File Explorer">${IC.fileExplorer}<span>File Explorer</span></button>
+      <button id="dev-btn-commandeer-${id}" class="remote-ctrl-btn remote-ctrl-btn--positive" title="Commandeer">${IC.commandeer}<span>Commandeer</span></button>
+      <button id="dev-btn-explorer-${id}" class="remote-ctrl-btn remote-ctrl-btn--positive" title="File Explorer">${IC.fileExplorer}<span>File Explorer</span></button>
       ${extraButtons}
     </div>
   `);
@@ -141,29 +141,199 @@ export function openDevicePopup(device, ICONS) {
   }).join('')}</div>
     `) : ''}
     ${sensorBtns}
-    ${remoteControl()}
+    ${remoteControl(id)}
   `;
 
   const popup = spawnPopup({ id, title: device.name, typeLabel, width: 460, bodyHTML: body, icon: ICONS.cpu });
 
-  // Wire Sensor Feed toggles
+  // Wire Sensor Feed toggles and Remote Control buttons
   if (popup) {
+     const cmdBtn = popup.querySelector(`#dev-btn-commandeer-${id}`);
+     if (cmdBtn) {
+        cmdBtn.addEventListener('click', () => {
+           cmdBtn.classList.toggle('active');
+           const active = cmdBtn.classList.contains('active');
+           const span = cmdBtn.querySelector('span');
+           span.innerText = active ? "Commandeered" : "Commandeer";
+           commandeerDevice(device.id, active);
+           console.log(`[UI] Commandeered device ${device.id}: ${active}`);
+        });
+     }
+     const expBtn = popup.querySelector(`#dev-btn-explorer-${id}`);
+     if (expBtn) {
+        expBtn.addEventListener('click', () => {
+           console.log(`[UI] Requesting file list for device ${device.id}`);
+           listDeviceFiles(device.id, '.');
+           
+           let currentViewMode = 'list'; // 'list' or 'tile'
+           let currentFiles = [];
+           let currentPath = '.';
+
+           const explorerPopup = spawnPopup({
+              id: `explorer-${id}`,
+              title: `File Explorer - ${device.name}`,
+              typeLabel: "Filesystem",
+              width: 600,
+              bodyHTML: `<div class="file-explorer-widget" style="display:flex;flex-direction:column;height:400px;overflow:hidden;">
+                 <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border);">
+                    <div class="explorer-path" style="font-family:monospace;font-size:12px;color:var(--text-muted);">Path: loading...</div>
+                    <div style="display:flex;gap:4px;">
+                       <button id="view-list-${id}" class="remote-ctrl-btn" style="padding:4px 8px;font-size:11px;">List</button>
+                       <button id="view-tile-${id}" class="remote-ctrl-btn" style="padding:4px 8px;font-size:11px;">Tile</button>
+                    </div>
+                 </div>
+                 
+                 <div class="explorer-header-row" style="display:flex;padding:4px 8px;font-size:11px;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <div style="flex:2;">Name</div>
+                    <div style="flex:1;">Date Modified</div>
+                    <div style="flex:1;">Type</div>
+                    <div style="flex:1;text-align:right;">Size</div>
+                    <div style="flex:0.5;text-align:right;">Actions</div>
+                 </div>
+                 
+                 <div class="explorer-file-list" style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px;font-family:monospace;font-size:12px;">
+                    <div>Loading filesystem over Zenoh...</div>
+                 </div>
+              </div>`
+           });
+
+           if (!explorerPopup) return;
+
+           const renderFiles = () => {
+               const listEl = explorerPopup.querySelector('.explorer-file-list');
+               const headerRow = explorerPopup.querySelector('.explorer-header-row');
+               
+               if (!listEl) return;
+               
+               if (currentFiles.length === 0) {
+                   listEl.innerHTML = `<div>(empty directory)</div>`;
+                   return;
+               }
+
+               if (currentViewMode === 'list') {
+                   headerRow.style.display = 'flex';
+                   listEl.style.flexDirection = 'column';
+                   listEl.style.flexWrap = 'nowrap';
+                   
+                   listEl.innerHTML = currentFiles.map(f => {
+                       const dateStr = f.date_modified ? new Date(f.date_modified * 1000).toLocaleString() : '--';
+                       return `
+                       <div class="file-item file-item-list" style="display:flex;align-items:center;padding:4px;border-radius:4px;background:rgba(255,255,255,0.02);cursor:pointer;" data-name="${f.name}">
+                          <div style="flex:2;display:flex;align-items:center;gap:6px;">
+                             <span>${f.is_dir ? '📁' : '📄'}</span> <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${f.name}">${f.name}</span>
+                          </div>
+                          <div style="flex:1;color:var(--text-muted);white-space:nowrap;overflow:hidden;">${dateStr}</div>
+                          <div style="flex:1;color:var(--text-muted);">${f.is_dir ? 'Folder' : (f.ext || 'File')}</div>
+                          <div style="flex:1;text-align:right;color:var(--text-muted);">${f.is_dir ? '--' : (f.size / 1024).toFixed(1) + ' KB'}</div>
+                          <div style="flex:0.5;text-align:right;">
+                             ${!f.is_dir ? `<button class="btn-open-file remote-ctrl-btn" data-path="${currentPath}/${f.name}" style="padding:2px 6px;font-size:10px;">Open</button>` : ''}
+                          </div>
+                       </div>
+                       `;
+                   }).join('');
+               } else {
+                   headerRow.style.display = 'none';
+                   listEl.style.flexDirection = 'row';
+                   listEl.style.flexWrap = 'wrap';
+                   
+                   listEl.innerHTML = currentFiles.map(f => {
+                       return `
+                       <div class="file-item file-item-tile" style="width:80px;height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px;border-radius:6px;background:rgba(255,255,255,0.03);text-align:center;cursor:pointer;" data-name="${f.name}">
+                          <div style="font-size:24px;margin-bottom:4px;">${f.is_dir ? '📁' : '📄'}</div>
+                          <div style="font-size:10px;word-break:break-all;overflow:hidden;text-overflow:ellipsis;max-height:30px;" title="${f.name}">${f.name}</div>
+                          ${!f.is_dir ? `<button class="btn-open-file remote-ctrl-btn" data-path="${currentPath}/${f.name}" style="padding:2px;font-size:9px;margin-top:auto;">Open</button>` : ''}
+                       </div>
+                       `;
+                   }).join('');
+               }
+
+               // Wire Open buttons
+               listEl.querySelectorAll('.btn-open-file').forEach(btn => {
+                   btn.addEventListener('click', (e) => {
+                       e.stopPropagation();
+                       import('./ws-bridge.js').then(bridge => {
+                           bridge.openDeviceFile(device.id, btn.dataset.path);
+                       });
+                   });
+               });
+               
+               // Wire Directory Navigation
+               listEl.querySelectorAll('.file-item').forEach(item => {
+                   item.addEventListener('click', () => {
+                       const fName = item.dataset.name;
+                       const f = currentFiles.find(file => file.name === fName);
+                       if (f && f.is_dir) {
+                           const newPath = currentPath === '.' ? fName : `${currentPath}/${fName}`;
+                           listDeviceFiles(device.id, newPath);
+                       }
+                   });
+               });
+           };
+
+           // View toggles
+           const btnList = explorerPopup.querySelector(`#view-list-${id}`);
+           const btnTile = explorerPopup.querySelector(`#view-tile-${id}`);
+           btnList.addEventListener('click', () => { currentViewMode = 'list'; renderFiles(); });
+           btnTile.addEventListener('click', () => { currentViewMode = 'tile'; renderFiles(); });
+
+           subscribe('device.files.list_results', (data) => {
+              if (!explorerPopup) return;
+              if (data.device_id !== device.id) return; // Prevent crossed events
+              
+              const pathEl = explorerPopup.querySelector('.explorer-path');
+              if (pathEl) pathEl.innerHTML = `Path: <a href="#" id="up-dir-${id}" style="color:var(--accent);text-decoration:none;">..</a> / ${data.path}`;
+              
+              const upBtn = explorerPopup.querySelector(`#up-dir-${id}`);
+              if (upBtn) {
+                  upBtn.addEventListener('click', (e) => {
+                      e.preventDefault();
+                      const parts = data.path.split('/');
+                      if (parts.length > 1) {
+                          parts.pop();
+                          listDeviceFiles(device.id, parts.join('/'));
+                      } else {
+                          listDeviceFiles(device.id, '.');
+                      }
+                  });
+              }
+
+              currentPath = data.path;
+              if (data.error) {
+                  const listEl = explorerPopup.querySelector('.explorer-file-list');
+                  if (listEl) listEl.innerHTML = `<div style="color:var(--text-danger);">Error: ${data.error}</div>`;
+                  currentFiles = [];
+              } else {
+                  currentFiles = data.files || [];
+                  // Sort: directories first, then alphabetically
+                  currentFiles.sort((a, b) => {
+                      if (a.is_dir === b.is_dir) return a.name.localeCompare(b.name);
+                      return a.is_dir ? -1 : 1;
+                  });
+                  renderFiles();
+              }
+           });
+        });
+     }
      const camBtn = popup.querySelector(`#dev-btn-cam-${id}`);
      if (camBtn) {
         camBtn.addEventListener('click', () => {
            camBtn.classList.toggle('active');
+           const active = camBtn.classList.contains('active');
            const span = camBtn.querySelector('span');
-           span.innerText = camBtn.classList.contains('active') ? "Streaming..." : "Camera";
-           camBtn.style.background = camBtn.classList.contains('active') ? "var(--accent-glow)" : "";
+           span.innerText = active ? "Streaming..." : "Camera";
+           camBtn.style.background = active ? "var(--accent-glow)" : "";
+           toggleDeviceStream(device.id, 'camera', active);
         });
      }
      const micBtn = popup.querySelector(`#dev-btn-mic-${id}`);
      if (micBtn) {
         micBtn.addEventListener('click', () => {
            micBtn.classList.toggle('active');
+           const active = micBtn.classList.contains('active');
            const span = micBtn.querySelector('span');
-           span.innerText = micBtn.classList.contains('active') ? "Live" : "Mic";
-           micBtn.style.background = micBtn.classList.contains('active') ? "var(--accent-glow)" : "";
+           span.innerText = active ? "Live" : "Mic";
+           micBtn.style.background = active ? "var(--accent-glow)" : "";
+           toggleDeviceStream(device.id, 'mic', active);
         });
      }
   }

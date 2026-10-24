@@ -1,3 +1,20 @@
+# Current Vision (Project Shen Architecture)
+
+Velvet Nadir is a decentralized, local-first ambient AI operating system and intelligence mesh:
+- **Collaborative Mesh Intelligence**: Autonomous devices unite via Zenoh, sharing unified long-term memory (`Jing` backed by MemPalace KnowledgeGraph) and distributed cognitive inference (`Po` fast reflexes + `Hun` deep reasoning).
+- **Autonomous Evolution**: Autonomous skill synthesis via `Saraswati` (Shruti -> Smriti -> Vidya), continuous A/B testing via `SkillABTester`, and mesh-wide skill gossip via `MeshSkillSync`.
+- **4-Track Honeypot & Privacy Defense**: Standard attack ports (22, 80, 443, etc.) are converted into tarpits and forensic traps; real services live on high, randomized ports with stealth OS firewall rules (silent `DROP` for unauthorized packets).
+- **Zero-Knowledge Credential Isolation**: Bloom filter guarantees honeypot credentials never collide with real secrets.
+- **NarrativeRadar Intelligence**: Military-grade social narrative velocity tracking, Chao1 nonparametric demographic virality scoring, and ground-truth physical telemetry correlation (USGS, NASA FIRMS, AISStream, OpenSky, CelesTrak, TeleGeography, Launch Library 2, NOAA).
+- **Task Kanban Governance & Goal Judge**: 3-tier persistence (Aether -> Mnemosyne -> Tartarus), anti-sycophancy model-judge verification, and strict task ownership.
+
+
+---
+
+> **HISTORICAL CONTENT BELOW** — The following was the original document from an earlier phase of the project.
+
+---
+
 # 🌌 Seamless Computing: Project Vision
 
 > **Codename: Velvet Nadir**  

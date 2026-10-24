@@ -217,6 +217,34 @@ class Xi:
         self._running = False
         self._breathe_lock = asyncio.Lock()
 
+    PRIVACY_TASKS = {
+        "MetadataStripper",
+        "HoneypotMonitor",
+        "NarrativeRadar",
+        "CanaryMonitor",
+        "PhantomPersonaManager",
+        "TrackerPolluter",
+        "AIToolNoise",
+    }
+
+    def calculate_jitter(self, base_interval: float, jitter_pct: float = 0.3) -> float:
+        """
+        Calculate wake-up interval with +/- 0-30% jitter.
+        Prevents timing analysis by network adversaries.
+        """
+        import random
+        delta = random.uniform(-jitter_pct, jitter_pct)
+        return max(0.1, base_interval * (1.0 + delta))
+
+    def schedule_next_run(self, task_name: str, base_interval: float) -> float:
+        """
+        Compute the next run interval.
+        Applies +/- 0-30% jitter strictly to privacy tasks; other tasks use deterministic schedule.
+        """
+        if task_name in self.PRIVACY_TASKS:
+            return self.calculate_jitter(base_interval, jitter_pct=0.3)
+        return base_interval
+
     def register_task(self, task: BreathTask):
         """Register a BreathTask with Xi."""
         self._tasks[task.name()] = task

@@ -35,13 +35,25 @@ class Jing:
 
     Falls back to ephemeral (empty) memory if dependencies are unavailable.
     """
+    
+    _instance: Optional[Jing] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(Jing, cls).__new__(cls, *args, **kwargs)
+            cls._instance._initialized = False
+        return cls._instance
 
     def __init__(self):
+        if getattr(self, "_initialized", False):
+            return
+            
         self._mem = None
         self._tartarus = None
         self._kg = None  # MemPalace KnowledgeGraph
         self._ready = False
         self._ensure_loaded()
+        self._initialized = True
 
     def _ensure_loaded(self):
         """Initialize PowerMem with Polymath-built config and Tartarus cold store."""
@@ -97,7 +109,8 @@ class Jing:
     # =========================================================================
 
     async def remember(self, fact: str, role: str = "user",
-                       scope: str | None = None, metadata: dict | None = None):
+                       scope: str | None = None, metadata: dict | None = None,
+                       skip_sutra_log: bool = False):
         """
         Crystallize new information into long-term memory (Aether tier).
 
@@ -128,6 +141,15 @@ class Jing:
             extra_meta["scope"] = scope
         extra_meta["privacy_level"] = int(level)
 
+        # Log to causal log (sutra) if not restricted and not skipped
+        if level != PrivacyLevel.RESTRICTED and not skip_sutra_log:
+            try:
+                from velvet.config import get_config
+                device_id = get_config().device_id
+                self.log_sutra(device_id, "add", {"fact": fact, "role": role, "metadata": extra_meta})
+            except Exception as e:
+                logger.error(f"[Jing] Sutra logging failed: {e}")
+
         if use_aether and self._mem:
             try:
                 messages = [{"role": role, "content": fact}]
@@ -142,6 +164,13 @@ class Jing:
                 logger.info(f"[Jing] Saved {level.name} memory directly to Tartarus")
             except Exception as e:
                 logger.error(f"[Jing] Direct Tartarus store failed: {e}")
+
+        # Broadcast over Zenoh mesh if mesh_sync is attached
+        if hasattr(self, "mesh_sync") and self.mesh_sync and not skip_sutra_log and level != PrivacyLevel.RESTRICTED:
+            try:
+                self.mesh_sync.on_local_write(fact, role, extra_meta)
+            except Exception as e:
+                logger.error(f"[Jing] Mesh sync write trigger failed: {e}")
 
     async def replicate(self, payload: dict):
         """
@@ -180,7 +209,7 @@ class Jing:
     # =========================================================================
 
     async def recall(self, query: str, limit: int = 5,
-                     deep: bool = False) -> list[str]:
+                     deep: bool = False, filter: dict | None = None) -> list[str]:
         """
         Retrieve relevant context from memory.
 
@@ -191,11 +220,12 @@ class Jing:
             query: Search query.
             limit: Max results to return.
             deep: If True, also search Tartarus cold archive.
+            filter: Optional metadata filter for PowerMem (e.g. {"agent_id": "astra"}).
 
         Returns:
             List of memory strings.
         """
-        results = await self.local_search(query, limit=limit)
+        results = await self.local_search(query, limit=limit, filter=filter)
 
         # Deep search: Tartarus FTS5
         if (deep or len(results) < limit) and self._tartarus:
@@ -211,7 +241,7 @@ class Jing:
 
         return results
 
-    async def local_search(self, query: str, limit: int = 5) -> list[str]:
+    async def local_search(self, query: str, limit: int = 5, filter: dict | None = None) -> list[str]:
         """Search only the local Aether (hot) store — no mesh, no Tartarus."""
         if not self._mem:
             return []
@@ -228,7 +258,10 @@ class Jing:
                 return []
 
         try:
-            results = self._mem.search(query, limit=limit)
+            kwargs = {"limit": limit}
+            if filter:
+                kwargs["filter"] = filter
+            results = self._mem.search(query, **kwargs)
             memories = [r["memory"] for r in results.get("results", [])]
             return memories
         except Exception as e:
@@ -501,6 +534,47 @@ class Jing:
             return provider in ("openai", "google")
         except Exception:
             return False
+
+    def get_version_vector(self) -> dict[str, int]:
+        """Get current version vector."""
+        if self._tartarus:
+            return self._tartarus.get_version_vector()
+        return {}
+
+    def get_merkle_root(self) -> str:
+        """Get Merkle root of causal log."""
+        if self._tartarus:
+            return self._tartarus.get_merkle_root()
+        return "empty"
+
+    def log_sutra(self, device_id: str, action: str, payload_dict: dict) -> dict:
+        """Log a new transaction locally."""
+        if self._tartarus:
+            return self._tartarus.log_sutra(device_id, action, payload_dict)
+        return {}
+
+    def get_sutras_since(self, version_vector: dict[str, int]) -> list[dict]:
+        """Get missing transactions."""
+        if self._tartarus:
+            return self._tartarus.get_sutras_since(version_vector)
+        return []
+
+    def replicate_sutra(self, sutra: dict) -> bool:
+        """Replicate external transaction."""
+        if self._tartarus:
+            return self._tartarus.replicate_sutra(sutra)
+        return False
+
+    def get_unresolved_conflicts(self) -> list[dict]:
+        """Get list of unresolved conflicts from database."""
+        if self._tartarus:
+            return self._tartarus.get_unresolved_conflicts()
+        return []
+
+    def resolve_conflict(self, sutra_id: str, final_payload: dict) -> None:
+        """Mark conflict resolved in database."""
+        if self._tartarus:
+            self._tartarus.resolve_conflict(sutra_id, final_payload)
 
     @property
     def is_persistent(self) -> bool:

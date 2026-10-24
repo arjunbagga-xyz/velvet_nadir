@@ -1,0 +1,2 @@
+module VelvetUI
+singleton Theme Theme.qml

@@ -82,6 +82,13 @@
               <circle cx="12" cy="12" r="3" />
             </svg>
           </button>
+          <button class="nav-item nav-item--icon" id="nav-bell" title="Notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+            </svg>
+            <div class="nav-bell__badge hidden" id="bell-badge">0</div>
+          </button>
           <div id="bridge-status" class="bridge-status bridge-status--offline">
             <span class="bridge-status__dot"></span>
             <span class="bridge-status__label">MOCK</span>
@@ -344,13 +351,48 @@
       <!-- Global Tooltip -->
       <div id="velvet-tooltip" class="velvet-tooltip"></div>
 
+      <!-- ══ NOTIFICATION HISTORY PANEL ══ -->
+      <div class="notif-panel" id="notif-panel">
+        <div class="notif-panel__header">
+          <span class="notif-panel__title">Notifications</span>
+          <button class="notif-panel__clear" id="notif-clear-all">Clear all</button>
+        </div>
+        <div class="notif-panel__list" id="notif-list">
+          <div style="text-align:center;color:var(--text-muted);font-size:0.78rem;padding:40px 0;">No notifications</div>
+        </div>
+      </div>
+
+      <!-- ══ TOAST CONTAINER ══ -->
+      <div class="toast-container" id="toast-container"></div>
+
+      <!-- ══ SKILL APPROVAL POPUP ══ -->
+      <div class="overlay" id="skill-overlay"></div>
+      <div class="skill-approval-popup hidden" id="skill-popup">
+        <div class="skill-popup__header">
+          <div class="skill-popup__header-left">
+            <span class="skill-popup__badge">Pending Skill</span>
+            <span class="skill-popup__title" id="skill-popup-title">...</span>
+          </div>
+          <button class="skill-popup__close" id="skill-popup-close">×</button>
+        </div>
+        <div class="skill-popup__body">
+          <div class="skill-popup__desc" id="skill-popup-desc"></div>
+          <div class="skill-popup__code" id="skill-popup-code"></div>
+          <div class="skill-popup__meta" id="skill-popup-meta"></div>
+          <div class="skill-popup__actions">
+            <button class="skill-popup__btn skill-popup__btn--reject" id="skill-popup-reject">Reject</button>
+            <button class="skill-popup__btn skill-popup__btn--approve" id="skill-popup-approve">✓ Approve & Deploy</button>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 
-  <!-- Scripts -->
   <script src="lib/d3.min.js"></script>
   <script type="module" src="data.js"></script>
   <script type="module" src="ws-bridge.js"></script>
+  <script type="module" src="notifications.js"></script>
   <script type="module" src="memory-graph.js"></script>
   <script type="module" src="agent-orb.js"></script>
   <script type="module" src="app.js"></script>

@@ -6,6 +6,13 @@
 
 ## 📋 Revision Notes
 
+**v1.3 Changes (2026-07-07):**
+- Introduced **Anamnesis Reconnection Protocol** with cryptographic validation
+- Added **Tín Phù state exchange** (Version Vectors + Merkle root signatures)
+- Integrated **Syzygy structural delta merge** and dual-row SQLite conflict logging
+- Added **Occam's Razor asynchronous conflict resolver** under `Xi` scheduler
+- Configured **Gated Context Compression** with Mirage scrambling rules
+
 **v1.2 Changes (2026-02-03):**
 - Dropped complex context "merging" with CRDTs
 - Introduced **Parallel Context Tracks** instead of instance merging
@@ -621,4 +628,35 @@ tracks:
 
 ---
 
-*v1.2 trades "elegance" for practicality. One brain, one truth, parallel tracks for independence.*
+## ⚡ v1.3 Memory Synchronization & Conflict Arbitration
+
+Velvet Nadir v1.3 implements robust offline/reconnection sync and semantic conflict resolution for distributed memory tracks.
+
+### 1. Causal Transaction Logging (Sutras)
+All local database updates (facts, memory additions, and modifications) are cataloged sequentially as causal log records (`Sutras`) containing:
+- Unique identifier `(id, hash)` to allow storing concurrent divergent entries
+- Device ID and version numbers
+- Cryptographic hash (Merkle chain root) and payload details
+- Status tags (`ACTIVE`, `CONFLICT_UNRESOLVED`, etc.)
+
+### 2. State Signature Exchanges (Tín Phù Handshake)
+On device reconnection, a cryptographic handshake occurs over Zenoh:
+- Verification of signatures using the shared `mesh_secret` and HMAC-SHA256.
+- Exchange of version vector state signatures (**Tín Phù** tokens) comprising the latest version numbers and Merkle hashes.
+- Nodes compare vectors to determine missing transaction gaps and request appropriate deltas.
+
+### 3. Structural delta merges (Syzygy)
+Once transaction deltas are received:
+- If a transaction is unique, it is directly integrated via the local ColdStore (Syzygy structural merge).
+- If a transaction ID collision occurs with a divergent hash, both local and peer entries are inserted into the database and flagged as `CONFLICT_UNRESOLVED` to prevent data loss.
+
+### 4. Occam's Razor (Semantic Conflict Arbitration)
+As part of the background scheduler (`Xi`), the `OccamsRazorTask` asynchronously reconciles logical database contradictions:
+- It groups unresolved conflicts and invokes the local LLM.
+- The LLM performs semantic merge arbitration (e.g. combining "User prefers tea" and "User prefers coffee" into "User enjoys both tea and coffee").
+- The task commits the chosen payload, updates its status to `ACTIVE`, and deletes the superseded conflicting logs.
+- Instant conflict-resolution events are broadcast over Zenoh to keep peer databases synchronized immediately.
+
+---
+
+*v1.3 introduces practical offline sync, cryptographic identity validation, and semantic resolution via local LLM arbitration.*

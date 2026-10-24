@@ -13,9 +13,12 @@ Respects PrivacyGuard:
 from __future__ import annotations
 
 import asyncio
+import json
+import hmac
+import hashlib
 from typing import Optional
-
 from loguru import logger
+from velvet.security import verify_message, sign_message
 
 
 class MeshMemorySync:
@@ -45,6 +48,22 @@ class MeshMemorySync:
                 "velvet/memory/recall/request",
                 self._on_mesh_recall_request
             )
+            await self._fabric.subscribe(
+                "velvet/anamnesis/handshake",
+                self._on_handshake_received
+            )
+            await self._fabric.subscribe(
+                "velvet/anamnesis/sync/request",
+                self._on_sync_request_received
+            )
+            await self._fabric.subscribe(
+                "velvet/anamnesis/sync/response",
+                self._on_sync_response_received
+            )
+            await self._fabric.subscribe(
+                "velvet/reconnection/resolved",
+                self._on_conflict_resolved_received
+            )
             self._running = True
             logger.info("[MeshMemorySync] Started — listening for memory sync events")
         except Exception as e:
@@ -53,6 +72,16 @@ class MeshMemorySync:
     async def stop(self):
         """Stop listening."""
         self._running = False
+        if self._fabric:
+            try:
+                await self._fabric.unsubscribe("velvet/memory/sync", self._on_mesh_write)
+                await self._fabric.unsubscribe("velvet/memory/recall/request", self._on_mesh_recall_request)
+                await self._fabric.unsubscribe("velvet/anamnesis/handshake", self._on_handshake_received)
+                await self._fabric.unsubscribe("velvet/anamnesis/sync/request", self._on_sync_request_received)
+                await self._fabric.unsubscribe("velvet/anamnesis/sync/response", self._on_sync_response_received)
+                await self._fabric.unsubscribe("velvet/reconnection/resolved", self._on_conflict_resolved_received)
+            except Exception as e:
+                logger.error(f"[MeshMemorySync] Error unsubscribing: {e}")
         logger.info("[MeshMemorySync] Stopped")
 
     async def on_local_write(self, text: str, role: str = "user",
@@ -225,3 +254,256 @@ class MeshMemorySync:
         except Exception as e:
             logger.error(f"[MeshMemorySync] Mesh recall failed: {e}")
             return []
+
+    # =========================================================================
+    # Anamnesis Reconnection Sync Protocol
+    # =========================================================================
+
+    def _sign_payload(self, payload: dict, secret: str) -> str:
+        """Sign a payload dict with HMAC-SHA256."""
+        if not secret:
+            logger.warning("[MeshMemorySync] Empty mesh_secret provided for payload signing.")
+            return ""
+        serialized = json.dumps(payload, sort_keys=True)
+        return sign_message(serialized.encode("utf-8"), secret).hex()
+
+    def _verify_payload(self, payload: dict, signature_hex: str, secret: str) -> bool:
+        """Verify the HMAC signature of a serialized payload dict."""
+        if not secret or not signature_hex:
+            logger.warning("[MeshMemorySync] Empty secret or signature for payload verification (failing closed)")
+            return False
+        try:
+            serialized = json.dumps(payload, sort_keys=True)
+            sig_bytes = bytes.fromhex(signature_hex)
+            return verify_message(serialized.encode("utf-8"), sig_bytes, secret)
+        except Exception:
+            return False
+
+    async def initiate_handshake(self, peer_device_id: str):
+        """Initiate cryptographic Anamnesis handshake (exchange Tín Phù)."""
+        if not self._fabric or not self._running:
+            return
+
+        try:
+            from velvet.config import get_config
+            cfg = get_config()
+            
+            tin_phu = {
+                "version_vector": self._jing.get_version_vector(),
+                "merkle_root": self._jing.get_merkle_root(),
+            }
+            
+            payload = {
+                "source_device": cfg.device_id,
+                "target_device": peer_device_id,
+                "tin_phu": tin_phu,
+            }
+            
+            sig = self._sign_payload(payload, cfg.security.mesh_secret)
+            envelope = {
+                **payload,
+                "signature": sig
+            }
+            
+            await self._fabric.publish("velvet/anamnesis/handshake", envelope)
+            logger.info(f"[Anamnesis] Sent Tín Phù handshake to peer {peer_device_id}")
+        except Exception as e:
+            logger.error(f"[Anamnesis] Handshake initiation failed: {e}")
+
+    async def _on_handshake_received(self, msg):
+        """Handle incoming handshake. Validates signatures and determines delta."""
+        if not self._jing or not self._fabric:
+            return
+
+        try:
+            from velvet.config import get_config
+            cfg = get_config()
+            
+            envelope = msg.payload if hasattr(msg, 'payload') else msg
+            target = envelope.get("target_device")
+            
+            # 1. Target check
+            if target != cfg.device_id:
+                return
+
+            source = envelope.get("source_device")
+            sig = envelope.get("signature")
+            tin_phu = envelope.get("tin_phu", {})
+            
+            # Reconstruct payload dict to verify signature
+            payload = {
+                "source_device": source,
+                "target_device": target,
+                "tin_phu": tin_phu,
+            }
+            
+            # 2. Cryptographic check
+            if not self._verify_payload(payload, sig, cfg.security.mesh_secret):
+                logger.warning(f"[Anamnesis] Rejected handshake from {source}: Invalid signature")
+                return
+
+            logger.info(f"[Anamnesis] Validated handshake from {source}")
+
+            # 3. Privacy check
+            if self._privacy and not self._privacy.can_sync_memory(source):
+                logger.debug(f"[Anamnesis] Rejected sync from untrusted {source}")
+                return
+
+            peer_vector = tin_phu.get("version_vector", {})
+            my_vector = self._jing.get_version_vector()
+
+            # Compare vectors to determine sync direction
+            # A. If peer is lagging: send missing sutras
+            missing_sutras = self._jing.get_sutras_since(peer_vector)
+            if missing_sutras:
+                response = {
+                    "source_device": cfg.device_id,
+                    "target_device": source,
+                    "sutras": missing_sutras,
+                }
+                sig_res = self._sign_payload(response, cfg.security.mesh_secret)
+                envelope_res = {**response, "signature": sig_res}
+                await self._fabric.publish("velvet/anamnesis/sync/response", envelope_res)
+                logger.info(f"[Anamnesis] Sent causal log delta ({len(missing_sutras)} sutras) to peer {source}")
+
+            # B. If we are lagging: request missing sutras
+            my_lagging = False
+            for peer_dev, peer_ver in peer_vector.items():
+                if my_vector.get(peer_dev, 0) < peer_ver:
+                    my_lagging = True
+                    break
+            
+            if my_lagging:
+                request = {
+                    "source_device": cfg.device_id,
+                    "target_device": source,
+                    "version_vector": my_vector,
+                }
+                sig_req = self._sign_payload(request, cfg.security.mesh_secret)
+                envelope_req = {**request, "signature": sig_req}
+                await self._fabric.publish("velvet/anamnesis/sync/request", envelope_req)
+                logger.info(f"[Anamnesis] Requested causal log delta from peer {source}")
+        except Exception as e:
+            logger.error(f"[Anamnesis] Handshake handling failed: {e}")
+
+    async def _on_sync_request_received(self, msg):
+        """Handle incoming sync delta request from a lagging peer."""
+        if not self._jing or not self._fabric:
+            return
+
+        try:
+            from velvet.config import get_config
+            cfg = get_config()
+            
+            envelope = msg.payload if hasattr(msg, 'payload') else msg
+            target = envelope.get("target_device")
+            
+            if target != cfg.device_id:
+                return
+
+            source = envelope.get("source_device")
+            sig = envelope.get("signature")
+            peer_vector = envelope.get("version_vector", {})
+            
+            payload = {
+                "source_device": source,
+                "target_device": target,
+                "version_vector": peer_vector,
+            }
+            
+            if not self._verify_payload(payload, sig, cfg.security.mesh_secret):
+                logger.warning(f"[Anamnesis] Rejected sync request from {source}: Invalid signature")
+                return
+
+            # Privacy check
+            if self._privacy and not self._privacy.can_sync_memory(source):
+                return
+
+            missing_sutras = self._jing.get_sutras_since(peer_vector)
+            if missing_sutras:
+                response = {
+                    "source_device": cfg.device_id,
+                    "target_device": source,
+                    "sutras": missing_sutras,
+                }
+                sig_res = self._sign_payload(response, cfg.security.mesh_secret)
+                envelope_res = {**response, "signature": sig_res}
+                await self._fabric.publish("velvet/anamnesis/sync/response", envelope_res)
+                logger.info(f"[Anamnesis] Serviced sync request from {source}: Sent {len(missing_sutras)} sutras")
+        except Exception as e:
+            logger.error(f"[Anamnesis] Sync request handling failed: {e}")
+
+    async def _on_sync_response_received(self, msg):
+        """Handle sync response delta (Syzygy structural merge)."""
+        if not self._jing:
+            return
+
+        try:
+            from velvet.config import get_config
+            cfg = get_config()
+            
+            envelope = msg.payload if hasattr(msg, 'payload') else msg
+            target = envelope.get("target_device")
+            
+            if target != cfg.device_id:
+                return
+
+            source = envelope.get("source_device")
+            sig = envelope.get("signature")
+            sutras = envelope.get("sutras", [])
+            
+            payload = {
+                "source_device": source,
+                "target_device": target,
+                "sutras": sutras,
+            }
+            
+            if not self._verify_payload(payload, sig, cfg.security.mesh_secret):
+                logger.warning(f"[Anamnesis] Rejected sync response from {source}: Invalid signature")
+                return
+
+            # Privacy check
+            if self._privacy and not self._privacy.can_sync_memory(source):
+                return
+
+            logger.info(f"[Anamnesis] Merging delta of {len(sutras)} sutras from {source}")
+
+            # Replicate each transaction structurally (Syzygy)
+            replicated_count = 0
+            for s in sutras:
+                success = self._jing.replicate_sutra(s)
+                if success:
+                    replicated_count += 1
+                    # If this is a fact insertion, write to local memory tiers
+                    if s["action"] == "add":
+                        p = s["payload"]
+                        # Remember local without re-logging to causal log
+                        await self._jing.remember(p["fact"], role=p.get("role", "user"), metadata=p.get("metadata"), skip_sutra_log=True)
+            
+            logger.info(f"[Anamnesis] Reconnection sync merge complete (integrated {replicated_count}/{len(sutras)} new sutras)")
+        except Exception as e:
+            logger.error(f"[Anamnesis] Sync response handling failed: {e}")
+
+    async def _on_conflict_resolved_received(self, msg):
+        """Handle real-time conflict resolution announcements from peers."""
+        if not self._jing:
+            return
+        try:
+            envelope = msg.payload if hasattr(msg, 'payload') else msg
+            sutra_id = envelope.get("sutra_id")
+            resolved_payload = envelope.get("payload")
+            source = envelope.get("source_device", "")
+            sig = envelope.get("signature", "")
+
+            from velvet.config import get_config
+            cfg = get_config()
+            check_data = {"sutra_id": sutra_id, "payload": resolved_payload, "source_device": source}
+            if sig and not self._verify_payload(check_data, sig, cfg.security.mesh_secret):
+                logger.warning(f"[Anamnesis] Rejected conflict resolution message from {source}: Invalid signature")
+                return
+
+            if sutra_id and resolved_payload:
+                self._jing.resolve_conflict(sutra_id, resolved_payload)
+                logger.info(f"[Anamnesis] Merged real-time conflict resolution for {sutra_id}")
+        except Exception as e:
+            logger.error(f"[Anamnesis] Handling of conflict resolved message failed: {e}")

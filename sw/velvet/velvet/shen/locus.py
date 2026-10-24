@@ -66,15 +66,17 @@ class LocusEngine:
                 data.get('radius_meters', 100.0)
             )
 
-    def _start(self):
+    async def start(self):
         try:
             from velvet.fabric import get_fabric, MessageType
             fabric = get_fabric()
-            # Subscribe to location updates
-            fabric.subscribe(MessageType.LOCATION_UPDATE.value, self._handle_location)
-            logger.info("[Locus] Subscribed to spatial coordinate streams.")
+            if fabric:
+                # Subscribe to location updates
+                await fabric.subscribe(MessageType.LOCATION_UPDATE.value, self._handle_location)
+                logger.info("[Locus] Subscribed to spatial coordinate streams.")
         except Exception as e:
             logger.error(f"[Locus] Failed to start subscriber: {e}")
+
 
     async def _handle_location(self, payload: dict):
         device_id = payload.get("device_id")

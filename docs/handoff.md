@@ -1,12 +1,46 @@
 # Velvet Nadir Handoff Document
 
-> Current state of the system after Sprint 17, for the next agent or session.
+> Current state of the system after Velvet Nadir Architectural Upgrade & Production Hardening.
 
-**Last Updated:** June 15, 2026
+**Last Updated:** October 24, 2026
 
 ---
 
 ## 1. System State
+
+### Velvet Nadir Architecture: COMPLETE & WIRED ✅
+**Enterprise Deception Web, Autonomous Reliability, Port Rotation & Real-World Telemetry:**
+- **Import Graph & Perimeter Integrity:** Consolidated `velvet.privacy` package with restored `perimeter.py` exporting `PrivacyClassifier`, `PrivacyLevel`, `PrivacyViolation`, `PrivacyGuard`, and `get_privacy_guard`. Consolidated `velvet.bus_drivers` to import directly from `velvet.drivers`.
+- **4-Track Deception Web & Dynamic Credential Seeding:** 
+  - Track 1 (SSH/MySQL/REST API debug), Track 2 (HTTPS/MinIO S3/Postgres), Track 3 (OpenWRT/Redis/MongoDB), Track 4 (VNC/Docker Socket/K8s Dashboard).
+  - Wired `HoneypotCredentialFactory` with HKDF deterministic entropy and Bloom filter zero-knowledge isolation against secret leaks.
+  - Tarpits feature slow-drip pagination, delayed synthetic dumps, ever-growing cursors, and exponential delay with `infinite` toggles.
+- **Port Rotation & Emergency Trigger:** Dynamic port range (30000–65000) with scheduled 12-hour make-before-break rotation and <500ms emergency rotation upon unauthenticated probes.
+- **Governance Layer & Task Graph:**
+  - `StopGateEngine` intercepts plain-text conversational turns when worker tasks are in `IN_PROGRESS` state, injecting synthetic completion nudges.
+  - `GoalJudge` verifies physical disk presence of declared artifacts upon `task_complete()`.
+  - Tartarus SQLite cold storage persistence and Aether hot memory cache with stale eviction.
+- **Full Reliability Matrix (All 13 Mechanisms Wired):**
+  - 7-stage `ErrorClassifier` wired into `MeshLLMAdapter` routing and cooldowns.
+  - Pre-execution `IntentLogger` tracking tool invocation lifecycle in `execute_tool_batch`.
+  - `sanitize_unicode`, `repair_truncated_tool_call`, and `get_context_for_llm` message sequence repair (system-first, alternating roles, tool pairing).
+- **Xi BreathTask Lifecycle:**
+  - Registered all 7 privacy breath tasks (`MetadataStripperTask`, `HoneypotMonitor`, `NarrativeRadarTask`, `CanaryMonitor`, `PhantomPersonaManager`, `TrackerPolluter`, `AIToolNoise`) and `SkillABTester` alongside the original 9 core tasks.
+- **NarrativeRadar & Physical Telemetry:**
+  - Tier 1.5 entity model with 17 entity types and 13 relations.
+  - Ingest pipeline with live USGS seismic feed query and fallback to structured events.
+  - Stylometric jitter defense via `StyleGuard` synonym substitution.
+
+---
+
+## HISTORICAL CONTENT
+
+### Sprint 22: IN PROGRESS 🟡
+**Phase 3 Implementation: Dynamic Delegation, Firmware Vault, Context-Aware Displays:**
+- **Dynamic Worker Delegation:** `AgentOrchestrator` (`agents.py`) dynamically registers ad-hoc `AgentIdentity` workers and manages concurrent `asyncio` task loops. Sub-agents communicate with CEO via `agent/ceo/delegation_request`.
+- **Firmware Vault & Zenoh-Pico Mesh Distribution:** `sw/velvet/firmware_vault/` created to serve precompiled `zenoh-pico` binaries to microcontrollers over Zenoh queryables.
+- **Seeding & TrustGate Protocol Integration:** New host nodes seed full Velvet core payload as `UNTRUSTED`. Secrets are gated until biometric promotion via `TrustGate`.
+- **Context-Aware Spatial UI Router:** `display.py` integrates `locus.py` spatial coordinates and sensor context into AI-driven UI target display selection.
 
 ### Sprint 17: COMPLETE ✅ (90 tests passing)
 

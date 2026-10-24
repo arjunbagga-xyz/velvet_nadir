@@ -6,7 +6,7 @@ from velvet.fabric import init_fabric
 from velvet.context import init_context_manager, TrackType
 from velvet.skills import get_skill_registry
 from velvet.gateway import init_gateway
-from velvet.example_skills import builtin  # noqa: F401 - registers skills
+from velvet.skills import builtin  # noqa: F401 - registers skills
 
 
 async def test():

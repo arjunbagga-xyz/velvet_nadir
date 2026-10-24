@@ -1,0 +1,21 @@
+{
+  "vault_version": "1.0.0",
+  "firmware": [
+    {
+      "mcu": "esp32",
+      "binary": "zenoh_pico_esp32_v0.11.0.bin",
+      "version": "0.11.0",
+      "protocol": "zenoh-pico",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "baud": 115200
+    },
+    {
+      "mcu": "rp2040",
+      "binary": "zenoh_pico_rp2040_v0.11.0.uf2",
+      "version": "0.11.0",
+      "protocol": "zenoh-pico",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "baud": 115200
+    }
+  ]
+}

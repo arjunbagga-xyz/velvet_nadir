@@ -4,6 +4,21 @@ Living document for deferred features, design ideas, and items not in the curren
 
 ---
 
+## 🚀 Session Handoff (July 7, 2026) -> Next Agent
+
+**Current State (End of Sprint 18):**
+- **Sprint 18 COMPLETE** — Feature Expansion, Specializations & Zenoh Polishes:
+  - **Skills Refactor & Armature Preprocessor (Phase 1):** Consolidated skills under `velvet/skills`, resolved circular import paths using `base.py`, implemented L0/L1 progressive loaders for Markdown skills, and built the Armature preprocessor to interpolate environment variables and configuration properties at runtime.
+  - **Context Compression & Mirage Gates (Phase 2):** Wired 50% token window compression check using local model summarization in `context.py`, routing cloud calls through Mirage proxy scrambling and local calls raw. Blocked cloud compression when `PROJECT`/`BUSINESS` tracks are active or code/paths are present.
+  - **Limen Gateway & Parallel MCP (Phase 3):** Created `LimenGateway` for external A2A agents and remote MCP servers, applying parameter scrambling/rehydration by default, while exempting local stdio/localhost MCP servers from scrambling.
+  - **Anamnesis Reconnection & Syzygy (Phase 4):** Implemented causal transaction logging (`Sutra`) using SHA-256 Merkle hashes, and created HMAC-signed version vector exchanges (`Tín Phù`) via Zenoh sync topics to execute structural Syzygy merge.
+  - **Occam's Razor Conflict Arbitration (Phase 5):** Updated SQLite schema in `tartarus.py` to support composite keys `(id, hash)` to store conflicting rows concurrently, and implemented LLM-mediated `OccamsRazorTask` to reconcile logical database conflicts asynchronously.
+  - **Credential Pool & CUA OS Sandbox (Phase 6):** Created `credentials.py` implementing key rotation and rate-limiting cooldowns. Built `cua_skill.py` auto-registering standard click/type/screenshot execution inside sandboxed environments.
+  - **Model Specializations & Zenoh Polishes (Phase 7):** Integrated Chatbot Arena ELO leaderboard data fetched from `api.wulong.dev` with a local database cache `model_benchmarks.json`. Multiplied candidates score in `best_device_for` by normalized ELO scores to route queries to specialized models (e.g. `code` or `text`). Wired real-time Zenoh event broadcasts for fallback downgrades, upgrades recovery, instant conflict resolutions, and dynamic MCP announcements.
+- **Robust Test Coverage:** 120 tests passing, covering skills, context compression, limen gateway, reconnection protocols, ELO routing, fallback broadcasts, and Occam conflict resolutions.
+
+---
+
 ## 🚀 Session Handoff (June 15, 2026) -> Next Agent
 
 **Current State (End of Sprint 17):**
@@ -242,3 +257,116 @@ During Sprint 15, we evaluated the MemPalace architecture for integration. We su
 ### 5. Palace Graph (Room-Based Navigation)
 - **What**: Cross-wing navigation graph built from ChromaDB metadata.
 - **Decision**: **SKIPPED**. Overlaps heavily with our **ContextWorkspace** spatial model and the **Locus** engine. Will only revisit if we need to discover "hidden tunnels" between completely unrelated workspaces.
+
+---
+
+## 🌐 Geopolitical Reference Notes: Stealth Networking & Tunnels
+
+Operating a peer-to-peer (P2P) mesh network across national borders where internet traffic is heavily restricted—such as within China (Great Firewall / GFW), Russia (TSPU / Sovereign Internet), or Iran (filternet)—requires advanced transport obfuscation. Standard encrypted protocols like raw TLS, SSH, or WireGuard are easily detected and blocked.
+
+### 1. Geopolitical Censorship Context
+
+#### The Great Firewall of China (GFW)
+The GFW is the most technologically advanced censorship system in the world. It employs active and passive countermeasures:
+- **DPI (Deep Packet Inspection)**: Analyzes packet headers and traffic signatures. High-entropy packets (typical of raw P2P protocols like Zenoh, IPFS, or custom binary RPCs) are flagged as suspicious.
+- **Active Probing**: When a GFW node detects an unknown protocol wrapped in TLS, it connects back to the source server mimicking different client handshakes. If the server responds in a way that reveals a proxy or VPN daemon, the IP/port is instantly blocked.
+- **SNI-Based Blocking**: The GFW matches the Server Name Indication (SNI) in the TLS Client Hello. If the destination domain is blacklisted, the handshake is dropped.
+- **Machine Learning & Entropy Analysis**: The GFW measures packet sizes and intervals. Long-lived, symmetric high-bandwidth streams (like model transfers or P2P context synchronization) are flagged as VPN proxies and blocked.
+
+#### Russia's TSPU (Technical Measures for Threat Counteraction)
+Implemented under the Russian "Sovereign Internet" law, TSPU devices are installed at all major ISP choke points:
+- Focuses on deep DPI signature blocking (e.g. WireGuard, OpenVPN, IPSec, shadowsocks).
+- Employs port-throttling and regional internet isolation ("Runet" switch off).
+
+#### Iran's Filternet
+- Relies heavily on DNS spoofing, protocol whitelisting, and severe bandwidth throttling of non-whitelisted TLS handshakes.
+- Frequently shuts down international gateways during high-alert events, necessitating local-only mesh fallback loops.
+
+---
+
+### 2. Stealth Protocol Implementations
+
+To survive these environments, the P2P transport layer must hide in plain sight by mimicking standard web traffic:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    GFW Censorship Stack                     │
+│                                                             │
+│  [Deep Packet Inspection (DPI)] ──▶ Blocks known TLS SNIs   │
+│  [Active Probing] ───────────────▶ Tests server endpoints   │
+│  [Entropy/Timing Attacks] ───────▶ Blocks high-entropy P2P  │
+│  [IP & Port Blockades] ──────────▶ Nullroutes peer IPs      │
+└─────────────────────────────┬───────────────────────────────┘
+                              │
+                    Requires evasion via
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 Stealth Transport Engine                    │
+│                                                             │
+│  • VLESS + XTLS-Reality: Mimics trusted server certs        │
+│  • Trojan + WS + TLS: Encapsulates packets inside WebSockets│
+│  • Domain Fronting / CDN Spoofing: Routes via Cloudflare    │
+│  • Traffic Padding: Adds jitter to mimic video streams       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### A. VLESS + XTLS-Reality (Zero-Certificate Stealth)
+- **Problem with standard TLS**: A proxy server requires a TLS certificate. If we use a self-signed or Let's Encrypt certificate, active probes will detect it because the certificate has no legitimate web presence.
+- **The Reality Solution**: XTLS-Reality eliminates the proxy's own TLS certificate entirely. Instead, the proxy "steals" the TLS certificate of a highly trusted, popular website (e.g. apple.com, microsoft.com, yahoo.com) that is already whitelisted by the GFW.
+- **Handshake Verification**:
+  1. The client sends a Client Hello with the SNI pointing to the decoy site.
+  2. The proxy intercepts the handshake. It forwards the request to the real decoy site, receives its real certificate, and passes it to the client.
+  3. The client and proxy perform a cryptographic handshake using a private pre-shared key. 
+  4. If an active probe connects to the proxy, the proxy forwards it directly to the real decoy site. The probe receives a perfectly valid website handshake, bypassing the censor.
+
+#### B. Trojan-GFW (WebSocket + TLS)
+- Trojan encapsulates the custom P2P protocol inside normal WebSocket connections (`wss://`).
+- The traffic looks identical to standard web application traffic (such as live chat, notification feeds, or web browser connections).
+- Can be fronted by major CDNs (Cloudflare, AWS CloudFront) to conceal the target server IP.
+
+#### C. Domain Fronting & SNI Spoofing
+- Routes traffic through CDN services (e.g., Cloudflare, CloudFront).
+- The outer SNI header in the TLS handshake points to a popular whitelisted site hosted on the same CDN (e.g., `images.cloudflare.com`).
+- The inner HTTP request (encrypted inside TLS) points to our private mesh node. The CDN decrypts the header and routes the packet to our server, while the GFW only sees traffic to Cloudflare.
+
+#### D. Traffic Padding & Timing Obfuscation
+- **Constant Bitrate**: Inject dummy packets (padding) to make the upload/download bandwidth look like constant, flat streaming (e.g. mimicking a 1080p video call or VoIP stream).
+- **Jitter Injection**: Add random delays to packet intervals to defeat entropy-based timing analysis.
+- **Zenoh Broadcast Suppression**: Disable all P2P discovery broadcasts (mDNS/IP multicast) over the physical network. Peers must use static, pre-arranged tunnel endpoints to prevent local network discovery profiling.
+
+#### E. Redundant Multi-Path Mesh
+- **Multi-Transport Routing**: Run Zenoh over multiple physical and virtual transports simultaneously (e.g. QUIC for speed, WebSocket for firewall evasion, TCP for reliability, and WebRTC for direct peer-to-peer NAT traversal).
+- **Path Selection Heuristic**: Dynamically monitor and switch routes based on real-time latency, jitter, packet loss, and connection throughput.
+- **Automatic Failover**: Instantly re-route messages if a specific connection path is blocked or degraded.
+
+#### F. Proxy-Aware Zenoh
+- **In-Fabric Proxying**: Add built-in support for SOCKS5 and HTTP/HTTPS client proxies inside Zenoh endpoint configurations (`connect` and `listen`).
+- **Proxy Auto-Detection**: Interrogate system settings or read PAC (Proxy Auto-Config) files dynamically to automatically determine outbound routing configurations.
+
+---
+
+## 🚀 Velvet OS & Future Vision (August 2026)
+
+- **Velvet as an Operating System**: The ultimate long-term vision is to convert Velvet from a Python applet into a full-blown, universal Operating System. It will grow into that eventually; for now, we keep the architecture flexible but maintain the applet scope.
+- **Gaming & Media First-Class Support**: Sunshine/Moonlight should remain a first-class option. Velvet will not always be constrained to a browser tab. Native desktop/mobile apps in the future can act as direct Moonlight clients to leverage its ultra-low latency and controller passthrough.
+- **Bulletproof Cryptography & Secrets**: Secret management and agent wallets are fortified by `MirageProtocol` (in-memory log scrubbing), `BasiliskEnclave` (ephemeral key assembly), and Fractal Key Sharding (threshold cryptography across the mesh). Agents cannot accidentally delete shards.
+- **Hierarchical Roster**: The `BusinessParadigmSkill` defines a powerful C-Suite roster. The CEO agent orchestrates tasks via `TaskGraph` and sub-agents can dynamically request delegation or budget from the CEO/Treasury.
+
+---
+
+## 🔌 Architectural Decision: Zenoh Transport & Hardware Bridging
+
+- **Hardware Buses (CAN/Serial) via Zenoh:** Zenoh is the universal nervous system. Physical hardware buses cannot speak Zenoh natively without a bridge. Thus, `bus_drivers.py` acts as our Zenoh Hardware Plugin, listening to physical wiring and publishing to `hardware/event/...`. For microcontrollers (e.g. ESP32), we aim to deploy `zenoh-pico` directly on the firmware so they can publish to Zenoh natively without needing a serial bridge at all.
+- **Commandeering (Media vs Signaling):** Zenoh manages the Control Plane (session broker, discovery, `BasiliskEnclave` SDP key exchange). Sunshine/WebRTC manages the Data Plane (raw 60fps UDP video frames). Wrapping 4K video frames inside standard Zenoh messages would add memory copy overhead; thus, the dual-plane architecture is intentional.
+
+---
+
+## 🚀 Sprint 22 Implementation Notes: Execution Architecture
+
+- **Dynamic Worker Delegation (CEO Framework)**: `AgentOrchestrator` (`agents.py`) dynamically registers ad-hoc `AgentIdentity` nodes and spawns concurrent `asyncio` task loops on demand. Sub-agents communicate back to the CEO via `agent/ceo/delegation_request` over Zenoh to request budget or sub-delegation.
+- **Firmware Vault & Zenoh-Pico Mesh Distribution**: Pre-compiled `zenoh-pico` binaries for MCUs (ESP32, RP2040) are held in `sw/velvet/firmware_vault/` and shared across the mesh via Zenoh queryables (`velvet/firmware/...`). Flashing is executed via `firmware_ops.py` wrapping `esptool`.
+- **Seeding & TrustGate Protocol Integration**: New host nodes are seeded with the full Velvet core payload, booting as `TrustLevel.UNTRUSTED`. No secrets, keys, or sharded credentials are shared until the user completes a biometric authentication (Face/Voice via `TrustGate`) to trigger a `TrustChangeRequest` promotion.
+- **Context-Aware Spatial UI Router**: `display.py` integrates `shen/locus.py` spatial coordinates and active sensor inputs (mics/cameras) into an AI/heuristic decision layer to select the optimal physical display for emitting `MACRO_UI` widgets.
+- **Gateway Single-Turn LLM Loop**: *[To be assessed later]* Currently, `_handle_llm_response` in `gateway.py` exits immediately after executing a tool, rather than looping back to the LLM. This is a deliberate design choice to preserve ultra-low latency for the Audio-First voice UI (e.g. "turn off the lights" should not pause). Multi-step deep reasoning tasks should instead be routed to asynchronous `AgentOrchestrator` workers.
+
+

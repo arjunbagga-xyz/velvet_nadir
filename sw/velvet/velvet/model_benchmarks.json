@@ -1,0 +1,10 @@
+{
+  "text": {
+    "gpt-4o": 1350.0,
+    "claude-3-5-sonnet": 1340.0
+  },
+  "code": {
+    "gpt-4o": 1350.0,
+    "claude-3-5-sonnet": 1340.0
+  }
+}

@@ -26,13 +26,18 @@ const listeners = {
     'chat': [],
     'gateway': [],
     'memory': [],
-    'jing.results': []
+    'jing.results': [],
+    'ui.widget.render': [],
+    'device.files.list_results': [],
+    'device.files.save_results': [],
+    'notification': []
 };
 
 export function subscribe(event, callback) {
-    if (listeners[event]) {
-        listeners[event].push(callback);
+    if (!listeners[event]) {
+        listeners[event] = [];
     }
+    listeners[event].push(callback);
 }
 
 function notify(event, data) {
@@ -52,6 +57,9 @@ export function connectBridge() {
         console.log('[Bridge] Connected');
         _isConnected = true;
         document.body.classList.add('bridge-connected');
+        // Register current device if available
+        const currentDevId = window.VELVET_DEVICE_ID || 'local_workstation';
+        registerDevice(currentDevId);
         // Update status badge
         const badge = document.getElementById('bridge-status');
         if (badge) {
@@ -98,11 +106,12 @@ function handleMessage(msg) {
             state.contexts = msg.workspaces || [];
             state.agents = msg.agents || [];
             state.memoryGraph = msg.memory || null;
-            if (msg.events) state.events = msg.events;
+            if (msg.events && msg.events.length > 0) state.events = msg.events;
             console.log('[Bridge] Received snapshot', state);
             notify('snapshot', state);
             notify('devices', state.devices);
             notify('contexts', state.contexts);
+            if (state.agents.length > 0) notify('agents', state.agents);
             if (state.memoryGraph) notify('memory', state.memoryGraph);
             break;
 
@@ -152,7 +161,27 @@ function handleMessage(msg) {
             break;
             
         case 'agent.update':
-            // Will wire to agents view later
+            if (data && data.id) {
+                const aIdx = state.agents.findIndex(a => a.id === data.id);
+                if (aIdx >= 0) {
+                    state.agents[aIdx] = { ...state.agents[aIdx], ...data };
+                } else {
+                    state.agents.push(data);
+                }
+            }
+            notify('agents', state.agents);
+            break;
+
+        case 'ui.widget.render':
+            notify('ui.widget.render', data);
+            break;
+
+        case 'device.files.list_results':
+            notify('device.files.list_results', data);
+            break;
+
+        case 'device.files.save_results':
+            notify('device.files.save_results', data);
             break;
 
         case 'memory.update':
@@ -162,6 +191,10 @@ function handleMessage(msg) {
 
         case 'jing.results':
             notify('jing.results', data);
+            break;
+
+        case 'notification':
+            notify('notification', data);
             break;
     }
 }
@@ -175,6 +208,10 @@ function send(type, payload) {
     }
     ws.send(JSON.stringify({ type, ...payload }));
     return true;
+}
+
+export function registerDevice(device_id) {
+    return send('device.register', { device_id });
 }
 
 export function sendChat(text) {
@@ -195,4 +232,32 @@ export function updateAgent(agent_id, fields) {
 
 export function searchJing(query) {
     return send('jing.search', { query });
+}
+
+export function commandeerDevice(device_id, commandeer = true) {
+    return send('device.commandeer', { device_id, commandeer });
+}
+
+export function listDeviceFiles(device_id, path = '.') {
+    return send('device.files.list', { device_id, path });
+}
+
+export function openDeviceFile(device_id, path) {
+    return send('device.files.open', { device_id, path });
+}
+
+export function saveDeviceFile(path, content) {
+    return send('device.files.save', { path, content });
+}
+
+export function toggleDeviceStream(device_id, stream_type = 'camera', active = true) {
+    return send('device.stream.toggle', { device_id, stream_type, active });
+}
+
+export function assignToWorkspace(workspace_id, item_type, item_id) {
+    return send('workspace.assign', { workspace_id, item_type, item_id });
+}
+
+export function triggerWidgetAction(widget_id, action, payload = {}) {
+    return send('widget.action', { widget_id, action, payload });
 }

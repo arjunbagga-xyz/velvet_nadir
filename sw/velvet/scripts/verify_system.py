@@ -131,7 +131,7 @@ async def test_skills():
     """Test skill registry."""
     print("\n=== Test 5: Skills ===")
     from velvet.skills import get_skill_registry
-    from velvet.example_skills import builtin  # Register skills
+    from velvet.skills import builtin  # Register skills
     
     registry = get_skill_registry()
     skills = registry.list_all()

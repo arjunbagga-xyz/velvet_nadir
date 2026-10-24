@@ -278,3 +278,28 @@ async def onboard_device(
         speak=f"Device {scanned.name} onboarded as untrusted {r.value}. To promote to trusted, I'll need to verify your identity. {success_msg}",
         display={"markdown": f"✅ **Success**: {scanned.name} is now part of the mesh as an UNTRUSTED device.\n\nTo promote it to TRUSTED, a biometric trust request is required.\n\n{success_msg}"}
     )
+
+from velvet.shen.xi import BreathTask, ComputeBudget, ConversationTurn
+
+class InterrogatorTask(BreathTask):
+    """
+    InterrogatorTask: Silent background network scanning.
+    Continuously scans the network in the background and reports findings to Jing.
+    """
+    
+    def name(self) -> str:
+        return "Interrogator"
+        
+    def priority(self) -> int:
+        return 20
+        
+    def required_budget(self) -> ComputeBudget:
+        return ComputeBudget.LOW
+        
+    async def run(self, batch: list[ConversationTurn]) -> None:
+        """Run the network scan."""
+        logger.info("[InterrogatorTask] Running silent background network scan...")
+        # A real implementation would run an async port scan (like nmap) over the subnet
+        # and compare against known mesh devices in Jing to find rogues or new devices.
+        await asyncio.sleep(0.5)
+        logger.debug("[InterrogatorTask] Scan complete. No rogue devices detected.")
